@@ -8,3 +8,6 @@ release/
 
 # Le jeton GitHub de ce poste n'a pas le droit de publier des workflows
 .github/workflows/
+
+# Outils de test propres ? ce PC (pilotage du jeu, captures)
+tools/

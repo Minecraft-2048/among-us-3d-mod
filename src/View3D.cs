@@ -31,6 +31,9 @@ namespace AmongUs3D
         private readonly ProxySystem _proxies = new ProxySystem();
         private readonly OnScreenButtons _buttons = new OnScreenButtons();
         private readonly ArrowSystem _arrows = new ArrowSystem();
+        private readonly KeyHints _keyHints = new KeyHints();
+        private bool _petLook;
+        private float _petLookEnd, _prePetPitch, _petPull;
         private readonly CachedMask _floorHidden = new CachedMask();
         private readonly CachedColor _background = new CachedColor();
 
@@ -145,6 +148,43 @@ namespace AmongUs3D
 
             bool showButtons = ButtonsEnabled() && _inWorld && !fullscreenUi && !_failSafe;
             _buttons.Update(_main, showButtons, _want3D, _third, _minimap, _toggle3D, _toggleCamera, _toggleMinimap);
+
+            // Touches du clavier écrites sur les boutons du jeu (Tuer, Sabotage...)
+            _keyHints.Update(ModConfig.KeyHintsOnButtons.Value && !Platform.IsMobile && _inWorld && !_failSafe);
+        }
+
+        /// <summary>
+        /// En 1re personne, pendant qu'on caresse son animal, la caméra se tourne vers lui et baisse les yeux
+        /// pour voir l'animation ; elle remonte ensuite à sa hauteur d'avant.
+        /// </summary>
+        private void UpdatePettingLook(float px, float py, float dt)
+        {
+            float tx = 0f, ty = 0f;
+            bool petting = !_third && ModConfig.LookAtPetWhenPetting.Value
+                           && Game.TryPettingTarget(_local, out tx, out ty);
+            if (petting)
+            {
+                if (!_petLook)
+                {
+                    _petLook = true;
+                    _prePetPitch = _controls.Pitch;
+                }
+                float dx = tx - px, dy = ty - py, d = MathF.Sqrt(dx * dx + dy * dy);
+                if (d > 0.05f)
+                {
+                    float eye = M.Clamp(ModConfig.EyeHeight.Value, 0.1f, 3f);
+                    float yaw = MathF.Atan2(dx, dy) / M.Deg2Rad;
+                    float pitch = -MathF.Atan2(eye - 0.15f, d + _petPull) / M.Deg2Rad;
+                    _controls.Steer(yaw, pitch, dt, 6f);
+                }
+                return;
+            }
+            if (_petLook)
+            {
+                _petLook = false;
+                _petLookEnd = Time.unscaledTime + 0.8f;
+            }
+            if (Time.unscaledTime < _petLookEnd) _controls.Steer(float.NaN, _prePetPitch, dt, 5f);
         }
 
         private static bool ButtonsEnabled()
@@ -220,7 +260,7 @@ namespace AmongUs3D
 
         private void DumpDiagnostics()
         {
-            Diagnostics.Dump(_rig, _walls, _proxies, _controls, _layer3D, _layerMini, _active, _want3D, _local, _main);
+            Diagnostics.Dump(_rig, _walls, _proxies, _controls, _keyHints, _layer3D, _layerMini, _active, _want3D, _local, _main);
         }
 
         // ------------------------------------------------------------------ cycle de vie
@@ -333,6 +373,9 @@ namespace AmongUs3D
                 FadeStart = half * 0.6f, FadeEnd = half * 0.97f,
             };
 
+            // ---- caresse : regarder l'animal
+            UpdatePettingLook(px, py, dt);
+
             // ---- position et orientation de la caméra
             float yaw = _controls.Yaw, pitch = _controls.Pitch;
             M.YawBasis(yaw, out float fx, out float fy, out _, out _);
@@ -340,6 +383,16 @@ namespace AmongUs3D
             if (!_third)
             {
                 camZ = -M.Clamp(ModConfig.EyeHeight.Value, 0.1f, 3f);
+                // Pendant une caresse, la caméra recule un peu : l'animal est juste à nos pieds.
+                float wantPull = _petLook ? 0.8f : 0f;
+                _petPull += (wantPull - _petPull) * (1f - MathF.Exp(-dt * 5f));
+                if (_petPull > 0.01f)
+                {
+                    float t = _walls.ClipFraction(px, py, px - fx * _petPull, py - fy * _petPull);
+                    float pull = t < 1f ? MathF.Max(0f, _petPull * t - 0.1f) : _petPull;
+                    camX = px - fx * pull;
+                    camY = py - fy * pull;
+                }
             }
             else
             {

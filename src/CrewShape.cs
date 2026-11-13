@@ -19,8 +19,17 @@ namespace AmongUs3D
         public readonly List<float> Nx = new List<float>(), Ny = new List<float>(), Nz = new List<float>();
         public readonly List<byte> Zone = new List<byte>();
         public readonly List<int> Tris = new List<int>();
+        /// <summary>Couleur propre de chaque sommet (0xRRGGBBAA), seulement pour les formes tirées d'un dessin (chapeaux).</summary>
+        public readonly List<uint> Rgba = new List<uint>();
 
         public int VertexCount => X.Count;
+        public bool HasColors => Rgba.Count == X.Count && X.Count > 0;
+
+        public int AddColored(float x, float y, float z, float nx, float ny, float nz, byte r, byte g, byte b)
+        {
+            Rgba.Add(((uint)r << 24) | ((uint)g << 16) | ((uint)b << 8) | 0xFFu);
+            return Add(x, y, z, nx, ny, nz, CrewZone.Body);
+        }
 
         public int Add(float x, float y, float z, float nx, float ny, float nz, byte zone)
         {
@@ -86,7 +95,7 @@ namespace AmongUs3D
         }
 
         /// <summary>Ajoute un triangle orienté vers l'extérieur (ignoré s'il est aplati, comme aux pôles).</summary>
-        private static void AddTriangle(ShapeMesh m, int a, int b, int c)
+        public static void AddTriangle(ShapeMesh m, int a, int b, int c)
         {
             float ux = m.X[b] - m.X[a], uy = m.Y[b] - m.Y[a], uz = m.Z[b] - m.Z[a];
             float vx = m.X[c] - m.X[a], vy = m.Y[c] - m.Y[a], vz = m.Z[c] - m.Z[a];
@@ -137,6 +146,98 @@ namespace AmongUs3D
             AddSuperEllipsoid(m, -LegSpacing, 0f, HipHeight - 0.105f, 0.118f, 0.155f, 0.135f, 0.5f, 0.85f, 8, 14, CrewZone.Leg);
             AddSuperEllipsoid(m, LegSpacing, 0f, HipHeight - 0.105f, 0.118f, 0.155f, 0.135f, 0.5f, 0.85f, 8, 14, CrewZone.Leg);
             return m;
+        }
+
+        /// <summary>Surface décrite par deux paramètres : u de 0 (haut) à 1 (bas), phi autour de l'axe vertical.</summary>
+        public delegate void Surface(float u, float phi, out float x, out float y, out float z);
+
+        /// <summary>
+        /// Ajoute une surface fermée décrite par <paramref name="f"/> (pôles en u = 0 et u = 1).
+        /// Les normales sont calculées par différences finies et tournées vers l'extérieur.
+        /// </summary>
+        public static void AddParametric(ShapeMesh m, int rings, int segs, Surface f, byte zone,
+                                         float tipNx, float tipNy, float tipNz)
+        {
+            int first = m.VertexCount;
+            const float du = 1e-3f, dp = 1e-3f;
+            for (int i = 0; i <= rings; i++)
+            {
+                float u = (float)i / rings;
+                f(u, 0f, out float ax, out float ay, out float az);
+                f(u, MathF.PI, out float bx, out float by, out float bz);
+                float cx = (ax + bx) * 0.5f, cy = (ay + by) * 0.5f, cz = (az + bz) * 0.5f;
+                for (int j = 0; j <= segs; j++)
+                {
+                    float phi = j == segs ? -MathF.PI : -MathF.PI + 2f * MathF.PI * j / segs;
+                    f(u, phi, out float x, out float y, out float z);
+                    float nx, ny, nz;
+                    if (i == 0) { nx = 0f; ny = 0f; nz = 1f; }
+                    else if (i == rings) { nx = tipNx; ny = tipNy; nz = tipNz; }
+                    else
+                    {
+                        f(u - du, phi, out float x0, out float y0, out float z0);
+                        f(u + du, phi, out float x1, out float y1, out float z1);
+                        f(u, phi - dp, out float xa, out float ya, out float za);
+                        f(u, phi + dp, out float xb, out float yb, out float zb);
+                        float tux = x1 - x0, tuy = y1 - y0, tuz = z1 - z0;
+                        float tpx = xb - xa, tpy = yb - ya, tpz = zb - za;
+                        nx = tuy * tpz - tuz * tpy;
+                        ny = tuz * tpx - tux * tpz;
+                        nz = tux * tpy - tuy * tpx;
+                        if (nx * nx + ny * ny + nz * nz < 1e-18f) { nx = x - cx; ny = y - cy; nz = z - cz; }
+                        if (nx * (x - cx) + ny * (y - cy) + nz * (z - cz) < 0f) { nx = -nx; ny = -ny; nz = -nz; }
+                    }
+                    m.Add(x, y, z, nx, ny, nz, zone);
+                }
+            }
+            int w = segs + 1;
+            for (int i = 0; i < rings; i++)
+            for (int j = 0; j < segs; j++)
+            {
+                int a = first + i * w + j, b = a + 1, c = a + w, d = c + 1;
+                AddTriangle(m, a, c, b);
+                AddTriangle(m, b, c, d);
+            }
+        }
+
+        /// <summary>
+        /// Fantôme : le haut du personnage (tête, visière, sac à dos) qui se termine en une queue
+        /// effilée, rejetée vers l'arrière. Pas de jambes : il flotte.
+        /// </summary>
+        public static ShapeMesh Ghost()
+        {
+            var m = new ShapeMesh();
+            AddParametric(m, 26, 22, GhostSurface, CrewZone.Body, 0f, -0.5f, -0.866f);
+            AddSuperEllipsoid(m, 0f, -0.27f, 0.58f, 0.175f, 0.10f, 0.165f, 0.5f, 0.5f, 8, 14, CrewZone.Backpack);
+            AddSuperEllipsoid(m, 0f, 0.185f, 0.715f, 0.205f, 0.115f, 0.118f, 0.75f, 0.8f, 9, 16, CrewZone.Visor);
+            return m;
+        }
+
+        /// <summary>Position du tip de la queue du fantôme (pour les tests).</summary>
+        public const float GhostTipY = -0.22f, GhostTipZ = 0.03f;
+
+        private static void GhostSurface(float u, float phi, out float x, out float y, out float z)
+        {
+            const float z0 = 0.60f, rz = 0.40f, e1 = 0.62f, e2 = 0.86f;
+            u = M.Clamp01(u);
+            float cp = MathF.Cos(phi), sp = MathF.Sin(phi);
+            if (u <= 0.5f)
+            {
+                // haut : la même calotte que le personnage vivant
+                float lat = (0.5f - u) / 0.5f * MathF.PI * 0.5f;
+                float cl = MathF.Cos(lat), sl = MathF.Sin(lat);
+                x = BodyRadiusX * Pow(cl, e1) * Pow(cp, e2);
+                y = BodyRadiusY * Pow(cl, e1) * Pow(sp, e2);
+                z = z0 + rz * Pow(sl, e1);
+                return;
+            }
+            // bas : la queue s'affine et part vers l'arrière
+            float s = (u - 0.5f) / 0.5f;
+            float wdt = MathF.Pow(MathF.Max(0f, MathF.Cos(s * MathF.PI * 0.5f)), 0.75f);
+            float yc = GhostTipY * MathF.Pow(s, 1.5f);
+            z = z0 - (z0 - GhostTipZ) * MathF.Pow(s, 0.85f);
+            x = BodyRadiusX * wdt * (1f - 0.25f * s) * Pow(cp, e2);
+            y = yc + BodyRadiusY * wdt * Pow(sp, e2);
         }
 
         /// <summary>

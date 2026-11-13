@@ -28,9 +28,99 @@ internal static class MathTests
         Vision();
         Segments();
         WallStrips();
+        GhostShape();
+        HatShapes();
 
         Console.WriteLine($"{_passed} tests réussis, {_failed} échecs");
         return _failed == 0 ? 0 : 1;
+    }
+
+    private static bool ValidMesh(ShapeMesh m)
+    {
+        foreach (int t in m.Tris)
+            if (t < 0 || t >= m.VertexCount) return false;
+        for (int i = 0; i < m.VertexCount; i++)
+        {
+            float l = MathF.Sqrt(m.Nx[i] * m.Nx[i] + m.Ny[i] * m.Ny[i] + m.Nz[i] * m.Nz[i]);
+            if (MathF.Abs(l - 1f) > 1e-3f) return false;
+        }
+        return m.Tris.Count % 3 == 0;
+    }
+
+    /// <summary>Chaque triangle tourne sa face vers l'extérieur (dans le sens des normales de ses sommets).</summary>
+    private static bool FacesOutward(ShapeMesh m)
+    {
+        for (int t = 0; t < m.Tris.Count; t += 3)
+        {
+            int a = m.Tris[t], b = m.Tris[t + 1], c = m.Tris[t + 2];
+            float ux = m.X[b] - m.X[a], uy = m.Y[b] - m.Y[a], uz = m.Z[b] - m.Z[a];
+            float vx = m.X[c] - m.X[a], vy = m.Y[c] - m.Y[a], vz = m.Z[c] - m.Z[a];
+            float cx = uy * vz - uz * vy, cy = uz * vx - ux * vz, cz = ux * vy - uy * vx;
+            float nx = m.Nx[a] + m.Nx[b] + m.Nx[c], ny = m.Ny[a] + m.Ny[b] + m.Ny[c], nz = m.Nz[a] + m.Nz[b] + m.Nz[c];
+            if (cx * nx + cy * ny + cz * nz < 0f) return false;
+        }
+        return true;
+    }
+
+    private static void GhostShape()
+    {
+        ShapeMesh g = CrewShape.Ghost();
+        Check(g.VertexCount > 500 && g.Tris.Count > 900, "fantôme : maillage non vide");
+        Check(ValidMesh(g), "fantôme : indices valides et normales unitaires");
+        Check(FacesOutward(g), "fantôme : triangles tournés vers l'extérieur");
+        float minY = float.MaxValue, minZ = float.MaxValue, maxZ = float.MinValue, maxR = 0f;
+        for (int i = 0; i < g.VertexCount; i++)
+        {
+            minY = MathF.Min(minY, g.Y[i]);
+            minZ = MathF.Min(minZ, g.Z[i]);
+            maxZ = MathF.Max(maxZ, g.Z[i]);
+            maxR = MathF.Max(maxR, MathF.Abs(g.X[i]));
+        }
+        Check(minY < -0.2f && minZ < 0.1f, "fantôme : la queue part vers l'arrière et descend près du sol");
+        Check(maxZ > 0.95f && maxZ < 1.05f && maxR < 0.32f, "fantôme : même tête que le personnage vivant");
+    }
+
+    private static void HatShapes()
+    {
+        const int W = 32, H = 32;
+        const float cell = 1f / 32f, y0 = -0.5f, z0 = 0.8f;
+        var px = new byte[W * H * 4];
+        for (int j = 4; j < 14; j++)
+        for (int i = 6; i < 26; i++)
+        {
+            int k = (j * W + i) * 4;
+            px[k] = 200; px[k + 1] = 40; px[k + 2] = 40; px[k + 3] = 255;
+        }
+        ShapeMesh hat = HatShape.Build(px, W, H, y0, cell, z0, cell, HatShape.HalfThickness);
+        Check(hat != null && hat.HasColors && hat.Tris.Count > 0, "chapeau : maillage coloré produit");
+        if (hat == null) return;
+        Check(ValidMesh(hat), "chapeau : indices valides et normales unitaires");
+        Check(FacesOutward(hat), "chapeau : triangles tournés vers l'extérieur");
+
+        float maxX = 0f, minX = 0f;
+        for (int i = 0; i < hat.VertexCount; i++) { maxX = MathF.Max(maxX, hat.X[i]); minX = MathF.Min(minX, hat.X[i]); }
+        Check(maxX <= HatShape.HalfThickness + 1e-4f && MathF.Abs(maxX + minX) < 1e-4f, "chapeau : épaisseur bornée et symétrique");
+
+        // le bas (posé sur la tête) reste épais, le haut s'amincit vers son bord
+        float bottom = ThicknessAt(hat, y0 + 16 * cell, z0 + 4 * cell);
+        float top = ThicknessAt(hat, y0 + 16 * cell, z0 + 14 * cell);
+        float middle = ThicknessAt(hat, y0 + 16 * cell, z0 + 9 * cell);
+        Check(bottom > 0.6f * HatShape.HalfThickness, "chapeau : le bord du bas garde son épaisseur");
+        Check(top < 0.5f * bottom && middle > top, "chapeau : le haut s'arrondit");
+
+        // un dessin tourné vers la gauche (largeur de pixel négative) donne la même forme, en miroir
+        ShapeMesh left = HatShape.Build(px, W, H, -y0, -cell, z0, cell, HatShape.HalfThickness);
+        Check(left != null && left.VertexCount == hat.VertexCount && FacesOutward(left), "chapeau : version tournée vers la gauche");
+
+        Check(HatShape.Build(new byte[W * H * 4], W, H, 0f, 0.1f, 0f, 0.1f, 0.3f) == null, "chapeau : image vide = pas de chapeau");
+    }
+
+    private static float ThicknessAt(ShapeMesh m, float y, float z)
+    {
+        float best = -1f;
+        for (int i = 0; i < m.VertexCount; i++)
+            if (MathF.Abs(m.Y[i] - y) < 1e-4f && MathF.Abs(m.Z[i] - z) < 1e-4f) best = MathF.Max(best, m.X[i]);
+        return best;
     }
 
     private static void YawBasis()

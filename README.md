@@ -10,6 +10,13 @@ et les joueurs sont de vrais petits personnages 3D.
 |---|---|
 | ![Personnage 3D](docs/images/personnage-3d.jpg) | ![Cadavre 3D](docs/images/cadavre-3d.jpg) |
 
+**Nouveau dans la 1.1** : chapeaux en volume (ici une couronne, de côté, de face et de dos), fantômes 3D quand
+on est mort, touches du clavier écrites sur les boutons, et la caresse de l'animal enfin visible.
+
+![Chapeau 3D vu de côté, de face et de dos](docs/images/chapeau-3d.jpg)
+
+![Touches sur les boutons et fantôme 3D avec son chapeau](docs/images/touches-et-fantome.jpg)
+
 Le jeu lui-même n'est pas modifié : vitesse, collisions, tâches, votes, réseau… tout reste celui d'Among Us.
 Les autres joueurs n'ont **pas** besoin du mod et ne voient aucune différence.
 
@@ -27,7 +34,11 @@ Les autres joueurs n'ont **pas** besoin du mod et ne voient aucune différence.
 | **Murs** | Construits là où le personnage bute réellement. Leur dessin d'origine (fenêtres, consoles de tâches, portes, sièges…) est **redressé à la verticale**. Les portes apparaissent quand elles se ferment. |
 | **Meubles** | Tables, caisses, fauteuils… deviennent des blocs en volume avec leur dessus dessiné. |
 | **Sol** | La carte 2D d'origine (bouches d'aération, surbrillances, décor) est plaquée au sol, mise à jour en direct. |
-| **Personnages** | Vrais modèles 3D aux couleurs du joueur : corps, visière, sac à dos, jambes qui marchent, contour noir. Les cadavres aussi (demi-corps et os). Chapeau et nom restent affichés au-dessus. Animaux, fantômes et animations spéciales restent des images tournées vers la caméra. |
+| **Personnages** | Vrais modèles 3D aux couleurs du joueur : corps, visière, sac à dos, jambes qui marchent, contour noir. Les cadavres aussi (demi-corps et os). Le nom reste affiché au-dessus. Animaux et animations spéciales (échelle, bouche d'aération…) restent des images tournées vers la caméra. |
+| **Chapeaux** | Ils deviennent des **objets en volume** posés sur la tête, fabriqués à partir de leur dessin : de côté on retrouve le dessin du jeu, de face et de trois quarts le chapeau a une vraie épaisseur arrondie, avec un contour noir. |
+| **Fantômes** | Quand tu meurs, la vue **reste en 3D** et tu deviens un **fantôme 3D** transparent qui flotte, avec une queue à la place des jambes (ton chapeau aussi). Les autres fantômes sont en 3D de la même façon. |
+| **Animaux** | Quand tu caresses ton animal, la main et les cœurs s'affichent **sur l'animal**. En 1re personne, la caméra recule un peu et se tourne vers lui le temps de l'animation. |
+| **Touches sur les boutons** | En petit, en bas de chaque bouton du jeu (Tuer, Sabotage, Conduit, Signaler, Utiliser, Capacité, Caresser, Carte…), la touche du clavier qui fait la même chose, lue dans tes réglages de touches d'Among Us. |
 | **Vision** | Le rayon de vision du jeu est respecté : obscurité au-delà, joueurs invisibles hors de vue ou derrière un mur, sabotage des lumières, vision d'imposteur, vision totale des fantômes. |
 | **Interface** | Le HUD du jeu (Utiliser, Signaler, Tuer, tâches, carte, chat) reste affiché par-dessus la 3D. |
 | **Flèches de sabotage** | Elles suivent la caméra : posées juste au-dessus de l'endroit visé quand il est devant toi, sinon en boussole autour du centre de l'écran (en haut = devant, à droite = à droite, en bas = derrière). |
@@ -53,7 +64,7 @@ Les touches de déplacement sont celles du jeu (ZQSD / WASD / flèches, selon te
 | Mini-carte | **F7** |
 | Capture d'écran (dossier `BepInEx/AmongUs3D-captures`) | **F12** |
 | Diagnostic dans le journal | **F9** |
-| Tuer, Signaler, Carte… | Touches habituelles du jeu (Q, R, Tab…) |
+| Tuer, Sabotage, Signaler, Carte… | Touches habituelles du jeu, **écrites en petit sur chaque bouton** (par défaut Q, Tab, R, Tab…) |
 
 Le curseur est rendu automatiquement dès qu'un menu, une tâche, le chat ou la carte est ouvert.
 
@@ -78,6 +89,8 @@ Pour désinstaller : supprime `BepInEx/plugins/AmongUs3D.dll`.
 
 - **Essayé en jeu** (novembre 2026, Among Us 2026.9.29, version Microsoft Store / Xbox, BepInEx be.735 x64) :
   The Skeld, The Fungle, le lobby ; souris, tâches, réunion, bouches d'aération, imposteur, cadavres.
+  Version 1.1 : touches sur les boutons (équipier et imposteur), chapeau 3D, caresse de l'animal et fantôme 3D
+  (rôle d'ange gardien de l'Entraînement), sur The Skeld.
 - **Pas encore essayé** : MIRA HQ, Polus, The Airship (le mod s'y construit de la même façon, mais attends-toi à
   des défauts d'affichage) et les versions Steam / Epic.
 - **Android (Starlight)** : le code est prévu pour (commandes tactiles, boutons à l'écran), mais il n'a jamais
@@ -103,6 +116,10 @@ Ouvre-le avec un éditeur de texte (jeu fermé). Les plus utiles :
 | `RotationParPas` | `0` | `90` = un quart de tour par appui (souris libre). |
 | `ChampDeVision` / `HauteurDesYeux` | `70` / `0.55` | Caméra à la première personne. |
 | `Personnages3D` / `TaillePersonnages3D` | `true` / `1` | Modèles 3D des joueurs ; `false` = images plates. |
+| `Chapeaux3D` | `true` | Chapeaux en volume ; `false` = chapeaux plats tournés vers la caméra. |
+| `Fantomes3D` | `true` | Fantômes en 3D ; `false` = images plates. |
+| `TouchesSurLesBoutons` | `true` | Touches du clavier écrites sur les boutons du jeu. |
+| `RegarderLAnimalCaresse` | `true` | En 1re personne, la caméra se tourne vers l'animal pendant la caresse. |
 | `Fleches3D` | `true` | Flèches de sabotage orientées selon la caméra ; `false` = flèches de la vue de dessus. |
 | `MursDebout` | `true` | Dessin des murs redressé ; `false` = ancien rendu à plat. |
 | `MursExterieurs` | `Auto` | Murs aux limites de la carte (cartes d'intérieur seulement en `Auto`). |
@@ -122,6 +139,7 @@ Le journal est **`BepInEx/LogOutput.log`**. **F9** y écrit un diagnostic comple
 | Je n'arrive pas à cliquer sur un bouton | Maintiens **Alt gauche**, ou appuie sur **F8**. |
 | Des murs bizarres sur une carte | `MursDebout = false` pour revenir au rendu simple, puis envoie le journal. |
 | Les personnages 3D ne te plaisent pas | `Personnages3D = false`. |
+| Un chapeau 3D a une forme bizarre | `Chapeaux3D = false` remet les chapeaux plats. |
 | Le jeu rame | `ResolutionDuSol = 1024`, `DistanceDeVueDuSol = 10`, `MiniCarteAuDemarrage = false`. |
 | « Trop d'erreurs : vue 3D désactivée » | Le mod s'est mis en sécurité : envoie `LogOutput.log`. |
 
@@ -129,6 +147,8 @@ Le journal est **`BepInEx/LogOutput.log`**. **F9** y écrit un diagnostic comple
 
 - Les décors d'Among Us sont des dessins 2D : de très près, le dessin redressé des murs est flou.
 - Skins et visières cosmétiques ne sont pas affichés sur les modèles 3D (le chapeau, oui).
+- Un chapeau 3D est fabriqué à partir de son dessin vu de côté : de face, son épaisseur est devinée (arrondie).
+  Un chapeau animé reste figé sur une image.
 - Pas de plafond : au-dessus des murs, c'est la couleur de fond.
 - Les murs ne suivent pas les plateformes mobiles (The Airship).
 
@@ -165,7 +185,9 @@ dotnet run --project tests/AmongUs3D.Tests.csproj -c Release
 | `src/Rig.cs` | Caméras : 3D, sol (carte vue de dessus), interface, mini-carte |
 | `src/WallSystem.cs` | Collisions de la carte → murs, faces redressées, meubles, portes, éclairage |
 | `src/ProxySystem.cs` | Joueurs, animaux, cadavres |
-| `src/CrewShape.cs`, `src/CrewModel.cs` | Forme et modèle 3D des personnages |
+| `src/CrewShape.cs`, `src/CrewModel.cs` | Forme et modèle 3D des personnages (vivants, cadavres, fantômes) |
+| `src/HatShape.cs`, `src/HatCapture.cs` | Chapeaux 3D : photo du dessin du chapeau, puis volume « gonflé » |
+| `src/KeyHints.cs` | Touches du clavier écrites sur les boutons du jeu |
 | `src/Controls.cs`, `src/MovementPatch.cs` | Caméra (souris, clavier, tactile) et déplacements relatifs à la caméra |
 | `src/Game.cs`, `src/InputCompat.cs` | Accès protégé au jeu et aux entrées |
 | `src/MathUtil.cs` | Mathématiques pures (testées) |

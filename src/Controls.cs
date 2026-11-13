@@ -108,6 +108,26 @@ namespace AmongUs3D
             }
         }
 
+        /// <summary>
+        /// Tourne doucement la caméra vers une direction (NaN = ne pas toucher à cet axe), par exemple vers l'animal
+        /// qu'on caresse. La souris garde la main : ses mouvements s'ajoutent.
+        /// </summary>
+        public void Steer(float yaw, float pitch, float dt, float rate)
+        {
+            float k = 1f - MathF.Exp(-dt * rate);
+            if (!float.IsNaN(yaw))
+            {
+                float d = M.DeltaAngle(Yaw, yaw) * k;
+                Yaw += d;
+                _targetYaw += d;
+            }
+            if (!float.IsNaN(pitch))
+            {
+                float maxPitch = M.Clamp(ModConfig.MaxPitch.Value, 0f, 85f);
+                Pitch = M.Clamp(Pitch + (pitch - Pitch) * k, -maxPitch, maxPitch);
+            }
+        }
+
         /// <summary>Schéma effectif (lu aussi par le patch de déplacement, à 50 Hz).</summary>
         private bool ComputeTank()
         {

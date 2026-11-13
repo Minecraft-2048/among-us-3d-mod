@@ -10,7 +10,7 @@ namespace AmongUs3D
     /// </summary>
     internal static class Diagnostics
     {
-        public static void Dump(Rig rig, WallSystem walls, ProxySystem proxies, Controls controls, int layer3D, int layerMini,
+        public static void Dump(Rig rig, WallSystem walls, ProxySystem proxies, Controls controls, KeyHints hints, int layer3D, int layerMini,
                                 bool active, bool want3D, PlayerControl local, Camera main)
         {
             var sb = new StringBuilder();
@@ -87,6 +87,7 @@ namespace AmongUs3D
             sb.AppendLine("Murs : " + (walls != null ? walls.Summary : "-"));
             sb.AppendLine("Personnages (joueurs/animaux/corps) : " + (proxies != null ? $"{proxies.Count}, dont {proxies.ModelCount} en modèle 3D" : "-"));
             if (proxies != null) Try(sb, () => proxies.Describe(sb));
+            if (hints != null) Try(sb, () => hints.Describe(sb));
             sb.AppendLine("Rig : " + (rig != null && rig.IsAlive ? $"OK (sol {rig.FloorHalf:0.#})" : "non créé"));
             sb.Append("===== fin du diagnostic =====");
             AmongUs3DPlugin.Logger.LogInfo(sb.ToString());

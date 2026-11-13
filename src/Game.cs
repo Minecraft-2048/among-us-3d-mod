@@ -382,7 +382,7 @@ namespace AmongUs3D
         internal struct AnimRefs
         {
             public PowerTools.SpriteAnim Animator;
-            public IntPtr Run, Idle;
+            public IntPtr Run, Idle, GhostIdle, GhostAngel;
         }
 
         public static bool TryAnimRefs(PlayerControl p, out AnimRefs refs)
@@ -403,6 +403,9 @@ namespace AmongUs3D
             AnimationClip run = g.RunAnim, idle = g.IdleAnim;
             refs.Run = run != null ? run.Pointer : IntPtr.Zero;
             refs.Idle = idle != null ? idle.Pointer : IntPtr.Zero;
+            AnimationClip ghost = g.GhostIdleAnim, angel = g.GhostGuardianAngelAnim;
+            refs.GhostIdle = ghost != null ? ghost.Pointer : IntPtr.Zero;
+            refs.GhostAngel = angel != null ? angel.Pointer : IntPtr.Zero;
             refs.Animator = a.Animator;
         }
 
@@ -418,7 +421,89 @@ namespace AmongUs3D
             if (cur == null) return 0;
             IntPtr ptr = cur.Pointer;
             if (ptr == refs.Run) return 2;
-            return ptr == refs.Idle ? 1 : 0;
+            if (ptr == refs.Idle) return 1;
+            if (ptr != IntPtr.Zero && (ptr == refs.GhostIdle || ptr == refs.GhostAngel)) return 3;
+            return 0;
+        }
+
+        // ------------------------------------------------------------------ animaux et caresse
+
+        /// <summary>Main qui caresse et cœurs (ils appartiennent au joueur, mais s'affichent sur l'animal).</summary>
+        public static bool TryPettingRenderers(PlayerControl p, out SpriteRenderer hand, out SpriteRenderer hearts)
+        {
+            hand = hearts = null;
+            try { PettingRenderersImpl(p, ref hand, ref hearts); }
+            catch (Exception e) { Report("CosmeticsLayer.PettingHand", e); }
+            return hand != null || hearts != null;
+        }
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static void PettingRenderersImpl(PlayerControl p, ref SpriteRenderer hand, ref SpriteRenderer hearts)
+        {
+            CosmeticsLayer c = p.cosmetics;
+            if (c == null) return;
+            PlayerPettingHand h = c.PettingHand;
+            if (h == null) return;
+            hand = h.HandSprite;
+            hearts = h.hearts;
+        }
+
+        /// <summary>Joueur à qui appartient un animal (null si inconnu).</summary>
+        public static PlayerControl PetOwner(Component pet)
+        {
+            try { return PetOwnerImpl(pet); } catch (Exception e) { Report("PetBehaviour.TargetPlayer", e); return null; }
+        }
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static PlayerControl PetOwnerImpl(Component pet)
+        {
+            PetBehaviour b = pet.TryCast<PetBehaviour>();
+            return b != null ? b.TargetPlayer : null;
+        }
+
+        /// <summary>L'animal est-il en train d'être caressé ?</summary>
+        public static bool PetBeingPet(Component pet)
+        {
+            try { return PetBeingPetImpl(pet); } catch (Exception e) { Report("PetBehaviour.beingPet", e); return false; }
+        }
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static bool PetBeingPetImpl(Component pet)
+        {
+            PetBehaviour b = pet.TryCast<PetBehaviour>();
+            return b != null && b.beingPet;
+        }
+
+        /// <summary>Si le joueur caresse son animal : position de l'animal sur la carte.</summary>
+        public static bool TryPettingTarget(PlayerControl p, out float x, out float y)
+        {
+            x = y = 0f;
+            if (p == null) return false;
+            try { return PettingTargetImpl(p, ref x, ref y); }
+            catch (Exception e) { Report("PlayerControl.petting", e); return false; }
+        }
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static bool PettingTargetImpl(PlayerControl p, ref float x, ref float y)
+        {
+            if (!p.petting) return false;
+            CosmeticsLayer c = p.cosmetics;
+            PetBehaviour pet = c != null ? c.CurrentPet : null;
+            if (pet == null) return false;
+            Vector3 pos = pet.transform.position;
+            x = pos.x;
+            y = pos.y;
+            return true;
+        }
+
+        /// <summary>Identifiant du chapeau porté (IntPtr.Zero si aucun ou inconnu).</summary>
+        public static IntPtr HatKey(PlayerControl p)
+        {
+            try { return HatKeyImpl(p); } catch (Exception e) { Report("HatParent.Hat", e); return IntPtr.Zero; }
+        }
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static IntPtr HatKeyImpl(PlayerControl p)
+        {
+            CosmeticsLayer c = p.cosmetics;
+            HatParent hat = c != null ? c.hat : null;
+            HatData data = hat != null ? hat.Hat : null;
+            return data != null ? data.Pointer : IntPtr.Zero;
         }
 
         /// <summary>Le jeu affiche-t-il ce joueur (faux dans une bouche d'aération, pendant certains effets...) ?</summary>

@@ -39,6 +39,10 @@ namespace AmongUs3D
         public static ConfigEntry<float> TouchLookSpeed;
         public static ConfigEntry<bool> InvertLookY;
         public static ConfigEntry<float> MaxPitch;
+        public static ConfigEntry<bool> KeyHintsOnButtons;
+        public static ConfigEntry<bool> LookAtPetWhenPetting;
+        public static ConfigEntry<bool> Hats3D;
+        public static ConfigEntry<bool> Ghosts3D;
         public static ConfigEntry<bool> MouseLookAtStart;
         public static ConfigEntry<bool> ClickToUse;
         public static ConfigEntry<float> MouseAxisScale;
@@ -110,6 +114,8 @@ namespace AmongUs3D
             KeyTurnLeft = cfg.Bind(K, "TournerGauche", KeyCode.None, "Touche supplémentaire pour tourner à gauche (optionnel).");
             KeyTurnRight = cfg.Bind(K, "TournerDroite", KeyCode.None, "Touche supplémentaire pour tourner à droite (optionnel).");
 
+            KeyHintsOnButtons = cfg.Bind(G, "TouchesSurLesBoutons", true, "Écrit en petit, en bas des boutons du jeu (Tuer, Sabotage, Signaler, Utiliser...), la touche du clavier qui fait la même chose (selon tes réglages de touches d'Among Us).");
+            LookAtPetWhenPetting = cfg.Bind(C, "RegarderLAnimalCaresse", true, "En 1re personne, la caméra se tourne vers l'animal pendant qu'on le caresse, pour voir l'animation.");
             MouseLookAtStart = cfg.Bind(C, "SourisCommeMinecraft", true,
                 "PC : dès l'entrée en 3D, la souris dirige la caméra (curseur caché) et les touches de déplacement deviennent avancer / reculer / pas de côté, comme dans Minecraft. " +
                 "Le curseur revient tout seul dans les menus, réunions, tâches, bouches d'aération et quand la carte est ouverte.");
@@ -138,6 +144,8 @@ namespace AmongUs3D
             RaiseWallArt = cfg.Bind(W, "MursDebout", true, "Redresse à la verticale le dessin des murs (fenêtres, consoles de tâches...) à l'endroit où le personnage bute réellement. false = ancien rendu (dessin des murs à plat au sol + muret bas).");
             OuterWalls = cfg.Bind(W, "MursExterieurs", ToggleMode.Auto, "Transforme aussi en murs les limites de la carte derrière lesquelles il n'y a rien. Auto = seulement sur les cartes d'intérieur (pas Polus ni The Fungle).");
             SabotageArrows3D = cfg.Bind(W, "Fleches3D", true, "Les flèches du jeu (sabotages...) suivent la caméra 3D : posées au-dessus de l'endroit visé quand il est devant soi, sinon en boussole autour du centre de l'écran (en haut = devant, en bas = derrière). false = flèches de la vue de dessus.");
+            Hats3D = cfg.Bind(W, "Chapeaux3D", true, "Les chapeaux deviennent des objets en volume posés sur la tête des personnages 3D (fabriqués à partir de leur dessin). false = images plates tournées vers la caméra.");
+            Ghosts3D = cfg.Bind(W, "Fantomes3D", true, "Les fantômes (visibles quand on est mort soi-même) sont des modèles 3D transparents qui flottent. false = images plates.");
             Characters3D = cfg.Bind(W, "Personnages3D", true, "Les joueurs et les cadavres sont de vrais modèles 3D (corps, visière, sac à dos, jambes animées). false = panneaux plats tournés vers la caméra.");
             CharacterScale = cfg.Bind(W, "TaillePersonnages3D", 1f, "Taille des personnages 3D (1 = taille du jeu).");
             DumpGeometry = cfg.Bind(W, "ExporterLaGeometrie", false, "Diagnostic : écrit dans le journal toutes les collisions de la carte (lignes GEO|...) à chaque construction des murs.");
