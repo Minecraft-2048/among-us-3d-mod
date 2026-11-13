@@ -1,0 +1,61 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+    <AssemblyName>AmongUs3D</AssemblyName>
+    <RootNamespace>AmongUs3D</RootNamespace>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <DebugType>embedded</DebugType>
+    <Version>1.0.0</Version>
+    <Description>Vue 3D à la première personne pour Among Us (Windows + Android/Starlight)</Description>
+    <Authors>AmongUs3D</Authors>
+    <!-- Pas de P/Invoke ni de code unsafe : condition de validation de Starlight (Android). -->
+    <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
+    <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <!-- Par défaut : bibliothèques officielles du jeu (flux nuget.bepinex.dev), comme les autres mods Among Us. -->
+    <UseOfficialGameLibs Condition="'$(UseOfficialGameLibs)' == ''">true</UseOfficialGameLibs>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="src/**/*.cs" />
+  </ItemGroup>
+
+  <!--
+    Mode "jeu installé" (le plus fiable, aucun téléchargement) :
+      dotnet build AmongUs3D.csproj -c Release -p:GameDir="C:\XboxGames\Among Us\Content"
+    Compile contre les vraies bibliothèques du jeu générées par BepInEx (BepInEx/interop), contre BepInEx lui-même
+    (BepInEx/core) et contre le .NET 6 livré avec BepInEx (dotnet/), puis copie le mod dans BepInEx/plugins.
+    Il faut avoir lancé le jeu une fois avec BepInEx pour que BepInEx/interop existe.
+  -->
+  <PropertyGroup Condition="'$(GameDir)' != ''">
+    <DisableImplicitFrameworkReferences>true</DisableImplicitFrameworkReferences>
+    <AmongUs Condition="'$(AmongUs)' == ''">$(GameDir)</AmongUs>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(GameDir)' != ''">
+    <!-- Les DLL natives du dossier dotnet ne sont pas des références .NET. -->
+    <GameDotnetLibs Include="$(GameDir)/dotnet/*.dll"
+                    Exclude="$(GameDir)/dotnet/clr*.dll;$(GameDir)/dotnet/coreclr.dll;$(GameDir)/dotnet/dbgshim.dll;$(GameDir)/dotnet/hostpolicy.dll;$(GameDir)/dotnet/mscord*.dll;$(GameDir)/dotnet/mscorrc.dll;$(GameDir)/dotnet/msquic.dll;$(GameDir)/dotnet/*.Native.*dll" />
+    <Reference Include="@(GameDotnetLibs)" Private="false" />
+    <Reference Include="$(GameDir)/BepInEx/core/*.dll" Exclude="$(GameDir)/BepInEx/core/dobby.dll" Private="false" />
+    <Reference Include="$(GameDir)/BepInEx/interop/*.dll" Private="false" />
+  </ItemGroup>
+
+  <!-- Mode par défaut (sans jeu installé) : dotnet build AmongUs3D.csproj -c Release -->
+  <PropertyGroup Condition="'$(UseOfficialGameLibs)' == 'true' and '$(GameDir)' == ''">
+    <RestoreAdditionalProjectSources>https://nuget.bepinex.dev/v3/index.json</RestoreAdditionalProjectSources>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(UseOfficialGameLibs)' == 'true' and '$(GameDir)' == ''">
+    <PackageReference Include="BepInEx.Unity.IL2CPP" Version="6.0.0-be.735" Private="false" ExcludeAssets="runtime;native" />
+    <PackageReference Include="AmongUs.GameLibs.Steam" Version="2026.9.29" PrivateAssets="all" />
+    <!-- Génère les bibliothèques "interop" du jeu pendant la compilation (comme le fait BepInEx au premier lancement). -->
+    <PackageReference Include="BepInEx.IL2CPP.MSBuild" Version="2.1.0-rc.1" PrivateAssets="all" ExcludeAssets="runtime" />
+  </ItemGroup>
+
+  <!-- dotnet build -p:AmongUs="C:\Program Files (x86)\Steam\steamapps\common\Among Us" copie le mod dans le jeu -->
+  <Target Name="CopyToGame" AfterTargets="Build" Condition="'$(AmongUs)' != ''">
+    <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(AmongUs)/BepInEx/plugins/" />
+  </Target>
+</Project>

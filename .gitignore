@@ -1,0 +1,10 @@
+bin/
+obj/
+*.user
+.vs/
+.idea/
+release/
+*.zip
+
+# Le jeton GitHub de ce poste n'a pas le droit de publier des workflows
+.github/workflows/
