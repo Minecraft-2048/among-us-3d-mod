@@ -30,6 +30,7 @@ namespace AmongUs3D
         private readonly WallSystem _walls = new WallSystem();
         private readonly ProxySystem _proxies = new ProxySystem();
         private readonly OnScreenButtons _buttons = new OnScreenButtons();
+        private readonly ArrowSystem _arrows = new ArrowSystem();
         private readonly CachedMask _floorHidden = new CachedMask();
         private readonly CachedColor _background = new CachedColor();
 
@@ -344,16 +345,30 @@ namespace AmongUs3D
             {
                 float dist = M.Clamp(ModConfig.ThirdPersonDistance.Value, 0.5f, 8f);
                 float h = M.Clamp(ModConfig.ThirdPersonHeight.Value, 0.2f, 6f);
-                float t = _walls.ClipFraction(px, py, px - fx * dist, py - fy * dist);
-                float d = t >= 1f ? dist : MathF.Max(0.3f, dist * t - 0.2f);
-                camX = px - fx * d;
-                camY = py - fy * d;
-                camZ = -h;
-                lookPitch = pitch - MathF.Atan2(h - 0.55f, d) / M.Deg2Rad; // regarde la tête du personnage
+                // La caméra tourne autour de la tête du personnage : regarder vers le bas la fait monter
+                // (et inversement), comme la vue arrière de Minecraft.
+                const float pivot = 0.55f;
+                float rest = MathF.Atan2(h - pivot, dist) / M.Deg2Rad;
+                float reach = MathF.Sqrt(dist * dist + (h - pivot) * (h - pivot));
+                float er = M.Clamp(rest - pitch, -8f, 84f) * M.Deg2Rad;
+                float back = reach * MathF.Cos(er), rise = reach * MathF.Sin(er);
+                float k = 1f;
+                if (pivot + rise < M.Clamp(ModConfig.WallHeight.Value, 0.3f, 10f) && back > 0.05f)
+                {
+                    float t = _walls.ClipFraction(px, py, px - fx * back, py - fy * back);
+                    if (t < 1f) k = MathF.Max(0.12f, t - 0.2f / back);
+                }
+                camX = px - fx * back * k;
+                camY = py - fy * back * k;
+                camZ = -MathF.Max(0.12f, pivot + rise * k);
+                lookPitch = pitch - rest; // regarde toujours la tête du personnage
             }
             float cp = MathF.Cos(lookPitch * M.Deg2Rad), sp = MathF.Sin(lookPitch * M.Deg2Rad);
             _rig.UpdateCameras(camX, camY, camZ, fx * cp, fy * cp, -sp,
                                _background.Get(ModConfig.BackgroundColor.Value, U.Col(0.02f, 0.03f, 0.05f)));
+
+            // ---- flèches du jeu (sabotages...) : réorientées par rapport à la caméra 3D
+            _arrows.Update(_rig, px, py, yaw);
 
             // ---- murs
             _walls.UpdateVisibility();

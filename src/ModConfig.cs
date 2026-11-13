@@ -58,6 +58,7 @@ namespace AmongUs3D
         public static ConfigEntry<bool> RaiseWallArt;
         public static ConfigEntry<ToggleMode> OuterWalls;
         public static ConfigEntry<bool> Characters3D;
+        public static ConfigEntry<bool> SabotageArrows3D;
         public static ConfigEntry<float> CharacterScale;
         public static ConfigEntry<bool> DumpGeometry;
         public static ConfigEntry<float> FloorViewDistance;
@@ -136,6 +137,7 @@ namespace AmongUs3D
             WallTrim = cfg.Bind(W, "MursAvecPlinthes", true, "Dessine une plinthe sombre en bas des murs unis et un bandeau en haut, pour qu'ils ressemblent à de vraies cloisons.");
             RaiseWallArt = cfg.Bind(W, "MursDebout", true, "Redresse à la verticale le dessin des murs (fenêtres, consoles de tâches...) à l'endroit où le personnage bute réellement. false = ancien rendu (dessin des murs à plat au sol + muret bas).");
             OuterWalls = cfg.Bind(W, "MursExterieurs", ToggleMode.Auto, "Transforme aussi en murs les limites de la carte derrière lesquelles il n'y a rien. Auto = seulement sur les cartes d'intérieur (pas Polus ni The Fungle).");
+            SabotageArrows3D = cfg.Bind(W, "Fleches3D", true, "Les flèches du jeu (sabotages...) suivent la caméra 3D : posées au-dessus de l'endroit visé quand il est devant soi, sinon en boussole autour du centre de l'écran (en haut = devant, en bas = derrière). false = flèches de la vue de dessus.");
             Characters3D = cfg.Bind(W, "Personnages3D", true, "Les joueurs et les cadavres sont de vrais modèles 3D (corps, visière, sac à dos, jambes animées). false = panneaux plats tournés vers la caméra.");
             CharacterScale = cfg.Bind(W, "TaillePersonnages3D", 1f, "Taille des personnages 3D (1 = taille du jeu).");
             DumpGeometry = cfg.Bind(W, "ExporterLaGeometrie", false, "Diagnostic : écrit dans le journal toutes les collisions de la carte (lignes GEO|...) à chaque construction des murs.");

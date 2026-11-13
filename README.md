@@ -22,7 +22,7 @@ Les autres joueurs n'ont **pas** besoin du mod et ne voient aucune différence.
 
 | Élément | En 3D |
 |---|---|
-| **Caméra** | Première personne (ou troisième personne avec F6). La souris tourne la caméra, haut/bas compris. |
+| **Caméra** | Première personne (ou troisième personne avec F6). La souris tourne la caméra, haut/bas compris. En troisième personne, elle tourne autour du personnage : regarder vers le bas la fait monter, comme dans Minecraft. |
 | **Déplacements** | Relatifs à la caméra : avancer, reculer, pas de côté. La vitesse et les collisions restent celles du jeu. |
 | **Murs** | Construits là où le personnage bute réellement. Leur dessin d'origine (fenêtres, consoles de tâches, portes, sièges…) est **redressé à la verticale**. Les portes apparaissent quand elles se ferment. |
 | **Meubles** | Tables, caisses, fauteuils… deviennent des blocs en volume avec leur dessus dessiné. |
@@ -30,6 +30,7 @@ Les autres joueurs n'ont **pas** besoin du mod et ne voient aucune différence.
 | **Personnages** | Vrais modèles 3D aux couleurs du joueur : corps, visière, sac à dos, jambes qui marchent, contour noir. Les cadavres aussi (demi-corps et os). Chapeau et nom restent affichés au-dessus. Animaux, fantômes et animations spéciales restent des images tournées vers la caméra. |
 | **Vision** | Le rayon de vision du jeu est respecté : obscurité au-delà, joueurs invisibles hors de vue ou derrière un mur, sabotage des lumières, vision d'imposteur, vision totale des fantômes. |
 | **Interface** | Le HUD du jeu (Utiliser, Signaler, Tuer, tâches, carte, chat) reste affiché par-dessus la 3D. |
+| **Flèches de sabotage** | Elles suivent la caméra : posées juste au-dessus de l'endroit visé quand il est devant toi, sinon en boussole autour du centre de l'écran (en haut = devant, à droite = à droite, en bas = derrière). |
 | **Mini-carte** | Une petite copie de la vue 2D normale, avec une flèche qui indique où tu regardes. |
 | **Retour en 2D automatique** | Dans les **bouches d'aération** (pour cliquer sur les flèches), pendant les réunions, les éjections, l'intro et les mini-jeux (tâches, caméras, ordinateur…). Le curseur revient tout seul. |
 
@@ -102,6 +103,7 @@ Ouvre-le avec un éditeur de texte (jeu fermé). Les plus utiles :
 | `RotationParPas` | `0` | `90` = un quart de tour par appui (souris libre). |
 | `ChampDeVision` / `HauteurDesYeux` | `70` / `0.55` | Caméra à la première personne. |
 | `Personnages3D` / `TaillePersonnages3D` | `true` / `1` | Modèles 3D des joueurs ; `false` = images plates. |
+| `Fleches3D` | `true` | Flèches de sabotage orientées selon la caméra ; `false` = flèches de la vue de dessus. |
 | `MursDebout` | `true` | Dessin des murs redressé ; `false` = ancien rendu à plat. |
 | `MursExterieurs` | `Auto` | Murs aux limites de la carte (cartes d'intérieur seulement en `Auto`). |
 | `HauteurDesMurs` / `HauteurDesObstacles` | `2` / `0.3` | Hauteur des murs et des meubles. |
@@ -127,7 +129,6 @@ Le journal est **`BepInEx/LogOutput.log`**. **F9** y écrit un diagnostic comple
 
 - Les décors d'Among Us sont des dessins 2D : de très près, le dessin redressé des murs est flou.
 - Skins et visières cosmétiques ne sont pas affichés sur les modèles 3D (le chapeau, oui).
-- Les flèches de tâches du HUD indiquent des directions « vue de dessus » (aide-toi de la mini-carte).
 - Pas de plafond : au-dessus des murs, c'est la couleur de fond.
 - Les murs ne suivent pas les plateformes mobiles (The Airship).
 

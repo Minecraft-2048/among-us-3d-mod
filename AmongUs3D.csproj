@@ -7,7 +7,7 @@
     <Nullable>disable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
     <DebugType>embedded</DebugType>
-    <Version>1.0.0</Version>
+    <Version>1.0.1</Version>
     <Description>Vue 3D à la première personne pour Among Us (Windows + Android/Starlight)</Description>
     <Authors>AmongUs3D</Authors>
     <!-- Pas de P/Invoke ni de code unsafe : condition de validation de Starlight (Android). -->

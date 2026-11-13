@@ -393,6 +393,25 @@ namespace AmongUs3D
             }
         }
 
+        /// <summary>Point du monde 3D vu par la caméra 3D : coordonnées écran (0..1), vrai s'il est devant la caméra.</summary>
+        public bool Project(float x, float y, float z, out float vx, out float vy)
+        {
+            Vector3 v = _cam3D.WorldToViewportPoint(U.V3(x, y, z));
+            vx = v.x;
+            vy = v.y;
+            return v.z > 0.3f;
+        }
+
+        /// <summary>Cadre de l'interface (caméra 2D du jeu) : centre et demi-dimensions, en unités du monde.</summary>
+        public void UiFrame(out float cx, out float cy, out float halfW, out float halfH)
+        {
+            Vector3 c = Main.transform.position;
+            cx = c.x;
+            cy = c.y;
+            halfH = Main.orthographicSize;
+            halfW = halfH * Main.aspect;
+        }
+
         public float FloorHalf => _floorHalf;
         public float FloorCenterX { get; private set; }
         public float FloorCenterY { get; private set; }

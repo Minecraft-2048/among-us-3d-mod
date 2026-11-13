@@ -60,6 +60,7 @@ namespace AmongUs3D
             public int SortLayer, SortOrder;
             public float Z;
             public float ScaleX = 1f;
+            public float RestX = float.NaN, RestY = float.NaN; // place du morceau quand le personnage est immobile
         }
 
         private sealed class Entity
@@ -532,6 +533,13 @@ namespace AmongUs3D
                     float lx = (rx * ca - ry * sa) / ssx;
                     float ly = (rx * sa + ry * ca) / ssy;
                     float lz = p.Role == RoleHatBack ? depth : -depth;
+                    // Sur un modèle 3D, le chapeau et le nom ne suivent pas les rebonds de l'animation de marche
+                    // du dessin 2D : ils gardent la place qu'ils ont quand le personnage est immobile.
+                    if (use3D && e.Kind == Kind.Player && (p.IsText || p.Role == RoleHatFront || p.Role == RoleHatBack))
+                    {
+                        if (!running || float.IsNaN(p.RestY)) { p.RestX = lx; p.RestY = ly; }
+                        else { lx = p.RestX; ly = p.RestY; }
+                    }
                     p.DstT.localPosition = U.V3(lx, ly, lz);
                     p.DstT.localRotation = U.RotationZ(p.SrcT.eulerAngles.z - sAngle);
                     p.DstT.localScale = U.V3(p.ScaleX, ls.y / ssy, 1f);
@@ -564,7 +572,7 @@ namespace AmongUs3D
             }
 
             // Hauteur des pieds (lissée pour ignorer le "rebond" des animations)
-            if (minY < float.MaxValue)
+            if (minY < float.MaxValue && !(use3D && running && !float.IsNaN(e.Feet)))
             {
                 float k = 1f - MathF.Exp(-f.DeltaTime * 8f);
                 e.Feet = float.IsNaN(e.Feet) ? minY : M.Lerp(e.Feet, minY, k);
