@@ -16,9 +16,26 @@ namespace AmongUs3D
         public static readonly ShapeMesh LegShape = CrewShape.Leg();
         public static readonly ShapeMesh CorpseShape = CrewShape.Corpse();
         public static readonly ShapeMesh GhostShape = CrewShape.Ghost();
+        public static readonly ShapeMesh PuddleShape = CrewShape.Puddle();
+        // Cadavre basculé de 0 à 90° (tous les 2°) : de combien le remonter pour qu'il reste posé sur le sol.
+        private static readonly float[] CorpseLift = BuildCorpseLift();
+
+        private static float[] BuildCorpseLift()
+        {
+            var t = new float[46];
+            for (int i = 0; i < t.Length; i++) t[i] = CrewShape.RestLift(CorpseShape, i * 2f * M.Deg2Rad);
+            return t;
+        }
+
+        public static float CorpseLiftAt(float angle)
+        {
+            float f = M.Clamp(angle / (2f * M.Deg2Rad), 0f, CorpseLift.Length - 1.001f);
+            int i = (int)f;
+            return CorpseLift[i] + (CorpseLift[i + 1] - CorpseLift[i]) * (f - i);
+        }
 
         public Material Solid, Outline;
-        public Mesh BodyOutline, LegOutline, CorpseOutline, GhostOutline;
+        public Mesh BodyOutline, LegOutline, CorpseOutline, GhostOutline, PuddleMesh;
 
         public static CrewKit Create()
         {
@@ -37,6 +54,7 @@ namespace AmongUs3D
             Black(kit.LegOutline, c2);
             Black(kit.CorpseOutline, c3);
             Black(kit.GhostOutline, c4);
+            kit.PuddleMesh = BuildMesh(PuddleShape, "AU3D_Flaque", 0f, out _);
             return kit;
         }
 
@@ -173,6 +191,7 @@ namespace AmongUs3D
             U.SafeDestroy(LegOutline);
             U.SafeDestroy(CorpseOutline);
             U.SafeDestroy(GhostOutline);
+            U.SafeDestroy(PuddleMesh);
         }
     }
 
@@ -201,7 +220,15 @@ namespace AmongUs3D
         private bool _yawInit, _shown;
         private float _lastAlpha = -1f;
         private int _order = int.MinValue;
-        private float _height = -1f;
+        private float _scaleXY = -1f, _scaleZ = -1f;
+        private float _lastTint = -1f;
+        private CrewKit _kit;
+        // Animations : cadavre (âge depuis la mort, dissolution par la Vipère) et saut dans une bouche d'aération.
+        private float _corpseAge = -1f, _dissolve, _popScale = 1f, _popLift;
+        private GameObject _puddleGo;
+        private Transform _puddleT;
+        private Material _puddleMat;
+        private bool _puddleOn;
         // Accessoires 3D (chapeau, visière) : maillages partagés (caches), jamais détruits ici.
         public const int SlotHat = 0, SlotVisor = 1;
         private readonly GameObject[] _accGo = new GameObject[2], _accOutlineGo = new GameObject[2];
@@ -232,6 +259,7 @@ namespace AmongUs3D
         private void Build(CrewKit kit, Transform parent, int layer)
         {
             _layer = layer;
+            _kit = kit;
             Root = new GameObject(_kind == ModelKind.Corpse ? "AU3D_Corpse3D" : (_kind == ModelKind.Ghost ? "AU3D_Ghost3D" : "AU3D_Crew3D"));
             Root.layer = layer;
             _rootT = Root.transform;
@@ -360,6 +388,20 @@ namespace AmongUs3D
             if (U.Alive(Root)) Root.SetActive(on);
         }
 
+        /// <summary>Cadavre : secondes écoulées depuis la mort (négatif = debout, sans animation) et dissolution (0..1).</summary>
+        public void SetCorpse(float age, float dissolve)
+        {
+            _corpseAge = age;
+            _dissolve = M.Clamp01(dissolve);
+        }
+
+        /// <summary>Saut dans une bouche d'aération, apparition : taille (1 = normale) et hauteur des pieds (en tailles de personnage).</summary>
+        public void SetPop(float scale, float lift)
+        {
+            _popScale = M.Clamp(scale, 0.02f, 1.5f);
+            _popLift = lift;
+        }
+
         /// <summary>Ordre de dessin (les personnages lointains d'abord). Le contour passe juste après le corps.</summary>
         public void SetOrder(int order)
         {
@@ -375,17 +417,33 @@ namespace AmongUs3D
         /// <param name="alpha">opacité (fondu au bord du champ de vision, fantômes, rôles invisibles...)</param>
         public void Update(float x, float y, float height, float faceX, float faceY, bool running, float dt, float alpha)
         {
-            if (MathF.Abs(height - _height) > 0.002f)
+            float scaleXY = height * _popScale, scaleZ = scaleXY, tint = 0f, fade = 1f;
+            if (_kind == ModelKind.Corpse)
             {
-                _height = height;
-                _rootT.localScale = U.V3(height, height, height);
+                // le corps bascule vers l'avant autour de ses pieds et reste couché, posé sur le sol
+                float angle = _corpseAge < 0f ? 0f : CrewShape.FallAngle(_corpseAge);
+                SetTilt(_bodyT, angle);
+                _bodyT.localPosition = U.V3(0f, 0f, -CrewKit.CorpseLiftAt(angle));
+                if (_dissolve > 0.001f)
+                {
+                    // acide de la Vipère : le corps s'affaisse, verdit, puis disparaît dans sa flaque
+                    scaleXY *= 1f + 0.22f * _dissolve;
+                    scaleZ *= 1f - 0.85f * M.SmoothStep01(_dissolve / 0.9f);
+                    tint = M.Clamp01(_dissolve * 1.6f);
+                    fade = 1f - M.SmoothStep01((_dissolve - 0.7f) / 0.3f);
+                }
+            }
+            if (MathF.Abs(scaleXY - _scaleXY) > 0.002f || MathF.Abs(scaleZ - _scaleZ) > 0.002f)
+            {
+                _scaleXY = scaleXY; _scaleZ = scaleZ;
+                _rootT.localScale = U.V3(scaleXY, scaleXY, scaleZ);
             }
 
             // orientation : on tourne en douceur vers la direction de marche
             float target = MathF.Atan2(faceX, faceY) / M.Deg2Rad;
             if (!_yawInit) { _yaw = target; _yawInit = true; }
             else _yaw += M.DeltaAngle(_yaw, target) * (1f - MathF.Exp(-dt * 14f));
-            _rootT.position = U.V3(x, y, 0f);
+            _rootT.position = U.V3(x, y, -_popLift * height);
             _rootT.rotation = U.RotationZ(-_yaw);
 
             float wanted = running ? 1f : 0f;
@@ -409,13 +467,35 @@ namespace AmongUs3D
                 SetTilt(_bodyT, 0.06f * MathF.Sin(_time * 1.7f) + 0.16f * _amp);
             }
 
-            if (MathF.Abs(alpha - _lastAlpha) > 0.004f)
+            float a = M.Clamp01(alpha) * fade;
+            if (MathF.Abs(a - _lastAlpha) > 0.004f || MathF.Abs(tint - _lastTint) > 0.01f)
             {
-                _lastAlpha = alpha;
-                Color c = U.Col(1f, 1f, 1f, M.Clamp01(alpha));
-                _solid.SetColor("_Color", c);
-                _outline.SetColor("_Color", c);
+                _lastAlpha = a; _lastTint = tint;
+                _solid.SetColor("_Color", U.Col(M.Lerp(1f, 0.50f, tint), M.Lerp(1f, 0.95f, tint), M.Lerp(1f, 0.30f, tint), a));
+                _outline.SetColor("_Color", U.Col(1f, 1f, 1f, a));
             }
+            if (_kind == ModelKind.Corpse) UpdatePuddle(scaleZ, M.Clamp01(alpha));
+        }
+
+        /// <summary>Flaque d'acide qui s'étale sous un corps en train de se dissoudre.</summary>
+        private void UpdatePuddle(float scaleZ, float alpha)
+        {
+            bool on = _dissolve > 0.001f;
+            if (on && _puddleGo == null && _kit != null && _kit.PuddleMesh != null)
+            {
+                _puddleMat = new Material(_kit.Solid);
+                _puddleGo = AddPart("flaque", _rootT, _kit.PuddleMesh, _puddleMat, false);
+                _puddleT = _puddleGo.transform;
+                _puddleOn = true;
+            }
+            if (_puddleGo == null) return;
+            if (on != _puddleOn) { _puddleOn = on; _puddleGo.SetActive(on); }
+            if (!on) return;
+            float s = 0.55f + 1.0f * _dissolve;
+            _puddleT.localScale = U.V3(s, s, 1f);
+            // toujours 1,5 cm au-dessus du sol, même quand le corps est aplati
+            _puddleT.localPosition = U.V3(0f, 0f, -0.015f / MathF.Max(0.02f, scaleZ));
+            _puddleMat.SetColor("_Color", U.Col(0.42f, 0.86f, 0.22f, 0.8f * M.Clamp01(_dissolve * 5f) * alpha));
         }
 
         /// <summary>Rotation autour de l'axe droite-gauche : positif = le haut part vers l'avant.</summary>
@@ -432,7 +512,10 @@ namespace AmongUs3D
             U.SafeDestroy(_legMesh);
             U.SafeDestroy(_solid);
             U.SafeDestroy(_outline);
+            U.SafeDestroy(_puddleMat);
             Root = null;
+            _puddleGo = null;
+            _kit = null;
             _accMesh[SlotHat] = _accMesh[SlotVisor] = null;
             _skin = null;
         }

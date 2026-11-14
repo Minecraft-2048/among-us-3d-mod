@@ -32,6 +32,9 @@ internal static class MathTests
         HatShapes();
         Props();
         SkinSampling();
+        WallRulesTests();
+        Animations();
+        KeyLayouts();
 
         Console.WriteLine($"{_passed} tests réussis, {_failed} échecs");
         return _failed == 0 ? 0 : 1;
@@ -377,6 +380,139 @@ internal static class MathTests
         Check(!M.SegmentIntersect(0, 0, 1, 0, 2, -1, 2, 1, out _), "segments disjoints");
         Check(Near(WallGeometry.DistanceToBox(5, 0, 0, 0, 2, 2), 3f), "distance à une boîte");
         Check(WallGeometry.DistanceToBox(1, 1, 0, 0, 2, 2) == 0f, "point dans la boîte");
+    }
+
+    /// <summary>Découpe un polygone en morceaux de 0,5 au plus, comme le fait le mod avec les collisions d'une carte.</summary>
+    private static WallRules.Piece[] Chain(float[] xs, float[] ys, bool closed, Func<float, float, int> kindAt, List<WallSeg> physical)
+    {
+        var list = new List<WallRules.Piece>();
+        int n = xs.Length, segs = closed ? n : n - 1;
+        for (int s = 0; s < segs; s++)
+        {
+            float ax = xs[s], ay = ys[s], bx = xs[(s + 1) % n], by = ys[(s + 1) % n];
+            physical.Add(new WallSeg { ax = ax, ay = ay, bx = bx, by = by });
+            float len = MathF.Sqrt((bx - ax) * (bx - ax) + (by - ay) * (by - ay));
+            int pieces = Math.Max(1, (int)MathF.Ceiling(len / 0.5f));
+            for (int k = 0; k < pieces; k++)
+            {
+                float t0 = (float)k / pieces, t1 = (float)(k + 1) / pieces;
+                float x0 = ax + (bx - ax) * t0, y0 = ay + (by - ay) * t0, x1 = ax + (bx - ax) * t1, y1 = ay + (by - ay) * t1;
+                list.Add(new WallRules.Piece { Ax = x0, Ay = y0, Bx = x1, By = y1, Kind = kindAt((x0 + x1) * 0.5f, (y0 + y1) * 0.5f) });
+            }
+        }
+        return list.ToArray();
+    }
+
+    private static List<WallSeg> Rectangle(float x0, float y0, float x1, float y1)
+    {
+        return new List<WallSeg>
+        {
+            new WallSeg { ax = x0, ay = y0, bx = x1, by = y0 }, new WallSeg { ax = x1, ay = y0, bx = x1, by = y1 },
+            new WallSeg { ax = x1, ay = y1, bx = x0, by = y1 }, new WallSeg { ax = x0, ay = y1, bx = x0, by = y0 },
+        };
+    }
+
+    private static int CountKind(WallRules.Piece[] c, int kind)
+    {
+        int n = 0;
+        foreach (WallRules.Piece p in c) if (p.Kind == kind) n++;
+        return n;
+    }
+
+    private static void WallRulesTests()
+    {
+        const int Low = WallRules.Low, Tall = WallRules.Tall;
+
+        // Salle de 10 x 6. Le mur "vision" est collé aux murs, sauf au sud où il est 1 en retrait :
+        // tout le côté sud est resté bas, ainsi que deux morceaux au milieu du mur nord.
+        var physical = new List<WallSeg>();
+        List<WallSeg> vision = Rectangle(-0.3f, -1f, 10.3f, 6.3f);
+        WallRules.Piece[] room = Chain(new[] { 0f, 10f, 10f, 0f }, new[] { 0f, 0f, 6f, 6f }, true,
+            (x, y) => y < 0.01f || (y > 5.99f && x > 4.5f && x < 5.5f) ? Low : Tall, physical);
+        Check(WallRules.Walkable(5f, 3f, physical) && !WallRules.Walkable(5f, -0.5f, physical) && !WallRules.Walkable(-3f, 3f, physical),
+              "murs : l'intérieur de la salle est praticable, pas l'extérieur");
+        Check(WallRules.VisionFirst(5f, 0f, 0f, -1f, 3f, vision, physical) && !WallRules.VisionFirst(5f, 0f, 0f, -1f, 0.5f, vision, physical),
+              "murs : mur vision trouvé derrière, dans la limite de distance");
+        int lowBefore = CountKind(room, Low);
+        int done = WallRules.CompleteWalls(room, true, vision, physical);
+        Check(lowBefore == 22 && done == 22 && CountKind(room, Low) == 0, "murs : côté de salle et trou dans un mur complétés");
+
+        // Barrière isolée au milieu de la salle (praticable des deux côtés) : elle reste basse.
+        WallRules.Piece[] rail = Chain(new[] { 3f, 5f }, new[] { 3f, 3f }, false, (x, y) => Low, physical);
+        Check(WallRules.CompleteWalls(rail, false, vision, physical) == 0, "murs : une barrière isolée reste basse");
+
+        // Pupitre de 2 x 1 adossé au mur sud : il ne devient pas un mur, son contour refermé devient un meuble.
+        physical = new List<WallSeg>();
+        vision = Rectangle(-0.3f, -0.3f, 10.3f, 6.3f);
+        WallRules.Piece[] desk = Chain(new[] { 0f, 4f, 4f, 6f, 6f, 10f, 10f, 0f }, new[] { 0f, 0f, 1f, 1f, 0f, 0f, 6f, 6f }, true,
+            (x, y) => x > 3.9f && x < 6.1f && y < 1.1f && !(y < 0.01f) ? Low : Tall, physical);
+        Check(WallRules.CompleteWalls(desk, true, vision, physical) == 0, "meuble adossé : son contour ne devient pas un mur");
+        var bx = new List<List<float>>();
+        var by = new List<List<float>>();
+        WallRules.FindBumps(desk, true, physical, bx, by);
+        bool one = bx.Count == 1;
+        Footprint f = one ? PropShape.Analyze(bx[0], by[0]) : default;
+        Check(one && Near(f.Area, 2f, 0.05f) && Near(f.Cx, 5f, 0.05f) && Near(f.Cy, 0.5f, 0.05f), "meuble adossé : contour refermé, bonne place et bonne taille");
+        Check(CountKind(desk, WallRules.Bump) == 8 && CountKind(desk, Low) == 0, "meuble adossé : ses morceaux ne sont plus des murets");
+
+        // Alcôve de 2 x 1 creusée dans le mur sud (on y marche) : ce n'est pas un meuble, et son fond est un mur.
+        physical = new List<WallSeg>();
+        vision = Rectangle(-0.3f, -1.3f, 10.3f, 6.3f);
+        WallRules.Piece[] alcove = Chain(new[] { 0f, 4f, 4f, 6f, 6f, 10f, 10f, 0f }, new[] { 0f, 0f, -1f, -1f, 0f, 0f, 6f, 6f }, true,
+            (x, y) => x > 3.9f && x < 6.1f && y < -0.01f ? Low : Tall, physical);
+        bx.Clear(); by.Clear();
+        WallRules.FindBumps((WallRules.Piece[])alcove.Clone(), true, physical, bx, by);
+        Check(bx.Count == 0, "alcôve : un creux praticable n'est pas un meuble");
+        Check(WallRules.CompleteWalls(alcove, true, vision, physical) == 4, "alcôve : le fond devient un mur");
+    }
+
+    private static void KeyLayouts()
+    {
+        Check(KeyLayout.UsScanCode("Q") == 0x10 && KeyLayout.UsScanCode("a") == 0x1E && KeyLayout.UsScanCode("M") == 0x32 && KeyLayout.UsScanCode("Z") == 0x2C,
+              "touches : place des lettres sur le clavier américain");
+        Check(KeyLayout.UsScanCode("Semicolon") == 0x27 && KeyLayout.UsScanCode(";") == 0x27 && KeyLayout.UsScanCode(",") == 0x33, "touches : signes de ponctuation");
+        Check(KeyLayout.UsScanCode("Tab") == 0 && KeyLayout.UsScanCode("1") == 0 && KeyLayout.UsScanCode("Espace") == 0 && KeyLayout.UsScanCode(null) == 0,
+              "touches : chiffres et touches spéciales laissés tels quels");
+    }
+
+    private static void Animations()
+    {
+        const float flat = MathF.PI * 0.5f;
+        bool rising = true, bounded = true;
+        for (float t = 0f; t < 1.2f; t += 0.01f)
+        {
+            float a = CrewShape.FallAngle(t);
+            if (t < 0.41f && CrewShape.FallAngle(t + 0.01f) < a) rising = false;
+            if (a < 0f || a > flat + 1e-4f) bounded = false;
+        }
+        Check(CrewShape.FallAngle(0f) == 0f && rising && bounded, "chute : part de debout, bascule sans dépasser l'horizontale");
+        Check(CrewShape.FallAngle(0.1f) < 0.1f && Near(CrewShape.FallAngle(0.42f), flat, 0.01f), "chute : lente au début, au sol en 0,42 s");
+        Check(CrewShape.FallAngle(0.53f) < flat - 0.1f && Near(CrewShape.FallAngle(CrewShape.FallDuration), flat) && Near(CrewShape.FallAngle(60f), flat),
+              "chute : un rebond, puis le corps reste couché");
+
+        ShapeMesh corpse = CrewShape.Corpse();
+        float lift = CrewShape.RestLift(corpse, flat);
+        Check(Near(CrewShape.RestLift(corpse, 0f), 0f, 0.01f) && lift > 0.15f && lift < 0.35f, "chute : debout les pieds touchent le sol, couché le corps est remonté");
+        float lowest = float.MaxValue, a1 = 1f, l1 = CrewShape.RestLift(corpse, a1);
+        for (int i = 0; i < corpse.VertexCount; i++)
+            lowest = MathF.Min(lowest, -corpse.Y[i] * MathF.Sin(a1) + corpse.Z[i] * MathF.Cos(a1) + l1);
+        Check(Near(lowest, 0f, 1e-4f), "chute : pendant la bascule, le point le plus bas reste au sol");
+
+        CrewShape.VentPop(0f, out float s0, out float z0);
+        CrewShape.VentPop(0.2f, out float s1, out float z1);
+        CrewShape.VentPop(1f, out float s2, out float z2);
+        Check(Near(s0, 1f) && Near(z0, 0f) && Near(s1, 1f) && z1 > 0.1f && s2 < 0.1f && z2 < 0f, "bouche d'aération : petit bond, puis le personnage rétrécit et s'enfonce");
+
+        ShapeMesh puddle = CrewShape.Puddle();
+        bool level = true;
+        float rMin = float.MaxValue, rMax = 0f;
+        for (int i = 1; i < puddle.VertexCount; i++)
+        {
+            if (puddle.Z[i] != 0f) level = false;
+            float r = MathF.Sqrt(puddle.X[i] * puddle.X[i] + puddle.Y[i] * puddle.Y[i]);
+            rMin = MathF.Min(rMin, r); rMax = MathF.Max(rMax, r);
+        }
+        Check(ValidMesh(puddle) && FacesOutward(puddle) && level && rMin > 0.3f && rMax < 0.6f, "flaque : disque plat au contour irrégulier");
     }
 
     private static void WallStrips()

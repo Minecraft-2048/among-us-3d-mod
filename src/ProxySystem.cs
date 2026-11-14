@@ -90,6 +90,10 @@ namespace AmongUs3D
             public Game.AnimRefs Anim;
             public int ColorId = -1;
             public float BodyHeight = float.NaN;
+            public float BornAt = -100f; // cadavre : moment où il est apparu (il tombe pendant CrewShape.FallDuration)
+            // dissolution (Vipère) : dernière valeur lue dans le jeu, et sens dans lequel son compteur avance
+            public float DissolveLast = float.NaN;
+            public bool DissolveDown;
 
             // chapeau 3D
             public IntPtr HatKey;
@@ -135,6 +139,7 @@ namespace AmongUs3D
         private int _excludedLayers;
         private float _nextWorldScan;
         private bool _worldScanned;
+        private bool _firstBodyScan = true;
         private MaterialPropertyBlock _mpb;
         private bool _mpbBroken, _copyBroken, _boundsBroken;
         private CrewKit _kit;
@@ -160,6 +165,9 @@ namespace AmongUs3D
                               $"alpha={e.Alpha.ToString("0.00", inv)} corpsNormal={e.NormalBody} anim={anim} fantome={e.Ghost} " +
                               $"corpsTrouvé={(e.BodyPart != null)} morceaux={e.Parts.Count} modèle={(e.Model != null && e.Model.Shown)} " +
                               $"modèleFantôme={(e.GhostModel != null && e.GhostModel.Shown)} chapeau3D={(e.Hat != null)} caressé={e.BeingPet}");
+                if (e.Kind == Kind.Body && Game.TryBodyState(e.Source, out Game.BodyState st))
+                    sb.AppendLine($"    cadavre : âge={(Time.time - e.BornAt).ToString("0.0", inv)} s montré={st.Shown} opacité={st.Alpha.ToString("0.00", inv)} " +
+                                  $"vipère={st.Viper} compteur={st.Dissolve.ToString("0.000", inv)} (descend={e.DissolveDown})");
             }
         }
 
@@ -182,6 +190,7 @@ namespace AmongUs3D
             _layer = layer;
             _excludedLayers = U.MaskFromNames("Shadow,DrawShadows") | (1 << layer) | extraExcludedMask;
             _nextWorldScan = 0f;
+            _firstBodyScan = true;
             if (_captureLayer < 0)
             {
                 var avoid = new HashSet<int> { layer };
@@ -237,7 +246,7 @@ namespace AmongUs3D
             _worldScanned = false;
             if (Time.unscaledTime >= _nextWorldScan)
             {
-                _nextWorldScan = Time.unscaledTime + 0.5f;
+                _nextWorldScan = Time.unscaledTime + 0.2f;
                 _worldScanned = true;
                 _seenWorld.Clear();
                 _scan.Clear();
@@ -246,6 +255,7 @@ namespace AmongUs3D
                 _scan.Clear();
                 Game.CollectDeadBodies(_scan);
                 foreach (Component c in _scan) { _seenWorld.Add(c.Pointer); if (!_entities.ContainsKey(c.Pointer)) Add(Kind.Body, c, null); }
+                _firstBodyScan = false;
             }
 
             for (int i = _list.Count - 1; i >= 0; i--)
@@ -269,10 +279,43 @@ namespace AmongUs3D
             e.RootT = e.Root.transform;
             e.MirrorT = NewChild("mirror", e.RootT).transform;
             e.TextT = NewChild("text", e.RootT).transform;
-            if (kind == Kind.Body) e.ColorId = Game.DeadBodyColorId(source);
+            if (kind == Kind.Body)
+            {
+                e.ColorId = Game.DeadBodyColorId(source);
+                // Un corps déjà là quand la vue 3D démarre est couché ; un corps qui apparaît ensuite tombe.
+                if (!_firstBodyScan) e.BornAt = Time.time;
+                InheritFacing(e);
+            }
             Rescan(e);
             _entities[e.Key] = e;
             _list.Add(e);
+        }
+
+        /// <summary>
+        /// Avancement de la dissolution d'un corps (0 = intact, 1 = dissous) d'après le compteur du jeu.
+        /// On ne suppose pas le sens du compteur : on regarde s'il monte ou s'il descend.
+        /// </summary>
+        private static float Dissolve(Entity e, float ratio)
+        {
+            // Dans le jeu (2026.9.29) le compteur part du maximum et descend : c'est le sens supposé au départ,
+            // sauf pour un corps tout neuf dont le compteur est encore près de zéro.
+            if (float.IsNaN(e.DissolveLast)) e.DissolveDown = !(Time.time - e.BornAt < 1.5f && ratio < 0.5f);
+            else if (ratio > e.DissolveLast + 1e-4f) e.DissolveDown = false;
+            else if (ratio < e.DissolveLast - 1e-4f) e.DissolveDown = true;
+            e.DissolveLast = ratio;
+            return e.DissolveDown ? 1f - ratio : ratio;
+        }
+
+        /// <summary>Le corps tombe dans la direction où regardait le joueur tué.</summary>
+        private void InheritFacing(Entity body)
+        {
+            if (!Game.TryBodyState(body.Source, out Game.BodyState st) || st.ParentId < 0) return;
+            foreach (Entity p in _list)
+            {
+                if (p.Kind != Kind.Player || !p.FacingInit || Game.PlayerId(p.Player) != st.ParentId) continue;
+                body.FaceX = p.FaceX; body.FaceY = p.FaceY; body.FacingInit = true;
+                return;
+            }
         }
 
         private GameObject NewChild(string name, Transform parent)
@@ -454,11 +497,12 @@ namespace AmongUs3D
         /// Un joueur est montré en modèle 3D s'il a le corps classique, qu'il est affiché par le jeu,
         /// et qu'il est simplement debout, en train de marcher, ou fantôme.
         /// </summary>
-        private static bool Wants3D(Entity e, in ProxyFrame f, out bool running, out float bodyAlpha, out bool ghost)
+        private static bool Wants3D(Entity e, in ProxyFrame f, out bool running, out float bodyAlpha, out bool ghost, out int special)
         {
             running = false;
             ghost = false;
             bodyAlpha = 1f;
+            special = 0;
             Part body = e.BodyPart;
             if (!e.NormalBody || !e.HasAnim || body == null || body.SrcSprite == null) return false;
             try
@@ -468,9 +512,17 @@ namespace AmongUs3D
             }
             catch { return false; }
             int kind = Game.AnimKind(e.Anim);
-            if (kind == 0) return false;
-            ghost = kind == 3;
-            running = kind == 2;
+            if (kind == Game.AnimSpecial) return false;
+            if (kind >= Game.AnimEnterVent)
+            {
+                // bouche d'aération, apparition, échelle : jouées par le modèle 3D (réglage Animations3D)
+                if (!ModConfig.Animations3D.Value) return false;
+                special = kind;
+                running = kind == Game.AnimClimb;
+                return bodyAlpha > 0.02f;
+            }
+            ghost = kind == Game.AnimGhost;
+            running = kind == Game.AnimRun;
             return bodyAlpha > 0.02f;
         }
 
@@ -572,12 +624,25 @@ namespace AmongUs3D
             // ---- modèle 3D (vivant, fantôme ou cadavre) ou panneaux plats ?
             bool use3D = false, running = false, ghost = false;
             float bodyAlpha = 1f;
+            int special = 0;
+            bool animated = ModConfig.Animations3D.Value;
+            Game.BodyState bodyState = default;
             if (ModConfig.Characters3D.Value && !_kitBroken)
             {
-                if (e.Kind == Kind.Player) use3D = Wants3D(e, f, out running, out bodyAlpha, out ghost);
-                else if (e.Kind == Kind.Body) use3D = true;
+                if (e.Kind == Kind.Player) use3D = Wants3D(e, f, out running, out bodyAlpha, out ghost, out special);
+                else if (e.Kind == Kind.Body)
+                {
+                    use3D = true;
+                    // Le corps suit ce que le jeu en montre (un corps dissous par la Vipère finit par disparaître).
+                    if (animated && Game.TryBodyState(e.Source, out bodyState))
+                    {
+                        use3D = bodyState.Shown && bodyState.Alpha > 0.02f;
+                        bodyAlpha = bodyState.Alpha;
+                    }
+                }
                 if (ghost && !ModConfig.Ghosts3D.Value) use3D = false;
             }
+            bool busy = running || special != 0; // le dessin 2D bouge : il ne sert plus de référence
             e.Ghost = use3D && ghost;
             CrewModel model = null;
             if (use3D)
@@ -660,7 +725,7 @@ namespace AmongUs3D
                     // du dessin 2D : ils gardent la place qu'ils ont quand le personnage est immobile.
                     if (use3D && e.Kind == Kind.Player && (p.IsText || p.Role == RoleHatFront || p.Role == RoleHatBack))
                     {
-                        if (!running || float.IsNaN(p.RestY)) { p.RestX = lx; p.RestY = ly; }
+                        if (!busy || float.IsNaN(p.RestY)) { p.RestX = lx; p.RestY = ly; }
                         else { lx = p.RestX; ly = p.RestY; }
                     }
                     p.DstT.localPosition = U.V3(lx, ly, lz);
@@ -696,7 +761,7 @@ namespace AmongUs3D
             }
 
             // Hauteur des pieds (lissée pour ignorer le "rebond" des animations)
-            if (minY < float.MaxValue && !(use3D && running && !float.IsNaN(e.Feet)))
+            if (minY < float.MaxValue && !(use3D && busy && !float.IsNaN(e.Feet)))
             {
                 float k = 1f - MathF.Exp(-f.DeltaTime * 8f);
                 e.Feet = float.IsNaN(e.Feet) ? minY : M.Lerp(e.Feet, minY, k);
@@ -704,16 +769,16 @@ namespace AmongUs3D
             float feet = float.IsNaN(e.Feet) ? -0.45f : e.Feet;
 
             // Taille du personnage : celle de son dessin quand il est immobile (et vivant).
-            if (use3D && e.Kind == Kind.Player && !running && !ghost && bodySize > 0.3f && bodySize < 3f)
+            if (use3D && e.Kind == Kind.Player && !busy && !ghost && bodySize > 0.3f && bodySize < 3f)
             {
                 e.BodyHeight = float.IsNaN(e.BodyHeight) ? bodySize : M.Lerp(e.BodyHeight, bodySize, 0.1f);
                 if (e.NormalBody) _typicalHeight = M.Lerp(_typicalHeight, e.BodyHeight, 0.05f);
             }
 
             // Chapeau 3D pas encore fabriqué : on le photographie maintenant (personnage immobile, au plus un par image).
-            if (use3D && e.Kind == Kind.Player && !e.HatResolved && !running && ModConfig.Hats3D.Value && !_captureBroken)
+            if (use3D && e.Kind == Kind.Player && !e.HatResolved && !busy && ModConfig.Hats3D.Value && !_captureBroken)
                 BakeHat(e, ghost);
-            if (acc3D && !running) ResolveAccessories(e);
+            if (acc3D && !busy) ResolveAccessories(e);
             if (pet3D && main != null && e.Speed < 0.05f) ResolvePet(e, main);
 
             // Le sprite d'origine regarde-t-il vers la droite ?
@@ -755,7 +820,21 @@ namespace AmongUs3D
                     model.SetSkin(acc3D ? e.Skin : null);
                 }
                 float a = e.Alpha * (ghost ? M.Clamp(bodyAlpha, 0.2f, 0.6f) : bodyAlpha);
-                model.Update(g.x, g.y, height, e.FaceX, e.FaceY, running, f.DeltaTime, a);
+                float faceX = e.FaceX, faceY = e.FaceY, popScale = 1f, popLift = 0f;
+                if (special == Game.AnimClimb)
+                {
+                    faceX = 0f; faceY = 1f; // sur une échelle, on fait face au mur (le nord de la carte)
+                }
+                else if (special != 0)
+                {
+                    // saut dans une bouche d'aération ; la sortie et l'apparition sont la même animation à l'envers
+                    float p = Game.AnimProgress(e.Anim);
+                    if (p >= 0f) CrewShape.VentPop(special == Game.AnimEnterVent ? p : 1f - p, out popScale, out popLift);
+                }
+                model.SetPop(popScale, popLift);
+                if (e.Kind == Kind.Body)
+                    model.SetCorpse(animated ? Time.time - e.BornAt : -1f, animated && bodyState.Viper ? Dissolve(e, bodyState.Dissolve) : 0f);
+                model.Update(g.x, g.y, height, faceX, faceY, running, f.DeltaTime, a);
                 model.Show(true);
                 CrewModel other = ghost ? e.Model : e.GhostModel;
                 other?.Show(false);

@@ -382,8 +382,12 @@ namespace AmongUs3D
         internal struct AnimRefs
         {
             public PowerTools.SpriteAnim Animator;
-            public IntPtr Run, Idle, GhostIdle, GhostAngel;
+            public IntPtr Run, Idle, GhostIdle, GhostAngel, EnterVent, ExitVent, Spawn, ClimbUp, ClimbDown;
         }
+
+        // Valeurs renvoyées par AnimKind.
+        public const int AnimSpecial = 0, AnimIdle = 1, AnimRun = 2, AnimGhost = 3,
+                         AnimEnterVent = 4, AnimExitVent = 5, AnimSpawn = 6, AnimClimb = 7;
 
         public static bool TryAnimRefs(PlayerControl p, out AnimRefs refs)
         {
@@ -406,10 +410,32 @@ namespace AmongUs3D
             AnimationClip ghost = g.GhostIdleAnim, angel = g.GhostGuardianAngelAnim;
             refs.GhostIdle = ghost != null ? ghost.Pointer : IntPtr.Zero;
             refs.GhostAngel = angel != null ? angel.Pointer : IntPtr.Zero;
+            refs.EnterVent = ClipPtr(g.EnterVentAnim);
+            refs.ExitVent = ClipPtr(g.ExitVentAnim);
+            refs.Spawn = ClipPtr(g.SpawnAnim);
+            refs.ClimbUp = ClipPtr(g.ClimbUpAnim);
+            refs.ClimbDown = ClipPtr(g.ClimbDownAnim);
             refs.Animator = a.Animator;
         }
 
-        /// <summary>0 = animation spéciale (bouche d'aération, échelle, apparition, fantôme...), 1 = immobile, 2 = course.</summary>
+        private static IntPtr ClipPtr(AnimationClip c) => c != null ? c.Pointer : IntPtr.Zero;
+
+        /// <summary>Avancement (0..1) de l'animation en cours du personnage ; -1 si inconnu.</summary>
+        public static float AnimProgress(in AnimRefs refs)
+        {
+            try { return AnimProgressImpl(refs); } catch (Exception e) { Report("SpriteAnim.GetNormalisedTime", e); return -1f; }
+        }
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static float AnimProgressImpl(in AnimRefs refs)
+        {
+            float t = refs.Animator.GetNormalisedTime();
+            return float.IsNaN(t) ? -1f : M.Clamp01(t);
+        }
+
+        /// <summary>
+        /// 0 = autre animation spéciale, 1 = immobile, 2 = course, 3 = fantôme,
+        /// 4 = entre dans une bouche d'aération, 5 = en sort, 6 = apparition, 7 = échelle.
+        /// </summary>
         public static int AnimKind(in AnimRefs refs)
         {
             try { return AnimKindImpl(refs); } catch (Exception e) { Report("SpriteAnim.GetCurrentAnimation", e); return 0; }
@@ -422,7 +448,12 @@ namespace AmongUs3D
             IntPtr ptr = cur.Pointer;
             if (ptr == refs.Run) return 2;
             if (ptr == refs.Idle) return 1;
-            if (ptr != IntPtr.Zero && (ptr == refs.GhostIdle || ptr == refs.GhostAngel)) return 3;
+            if (ptr == IntPtr.Zero) return 0;
+            if (ptr == refs.GhostIdle || ptr == refs.GhostAngel) return AnimGhost;
+            if (ptr == refs.EnterVent) return AnimEnterVent;
+            if (ptr == refs.ExitVent) return AnimExitVent;
+            if (ptr == refs.Spawn) return AnimSpawn;
+            if (ptr == refs.ClimbUp || ptr == refs.ClimbDown) return AnimClimb;
             return 0;
         }
 
@@ -608,6 +639,58 @@ namespace AmongUs3D
             visor = Palette.VisorColor;
             return true;
         }
+
+        /// <summary>Ce que le jeu montre d'un cadavre.</summary>
+        internal struct BodyState
+        {
+            public bool Shown;      // le jeu l'affiche (au moins un de ses dessins est actif)
+            public float Alpha;     // opacité de son dessin
+            public bool Viper;      // tué par la Vipère : il se dissout
+            public float Dissolve;  // avancement de la dissolution (0..1)
+            public int ParentId;    // numéro du joueur mort (-1 si inconnu)
+        }
+
+        public static bool TryBodyState(Component c, out BodyState st)
+        {
+            st = new BodyState { Shown = true, Alpha = 1f, ParentId = -1 };
+            try { BodyStateImpl(c, ref st); return true; }
+            catch (Exception e) { Report("DeadBody.bodyRenderers", e); return false; }
+        }
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static void BodyStateImpl(Component c, ref BodyState st)
+        {
+            DeadBody b = c.TryCast<DeadBody>();
+            if (b == null) return;
+            st.ParentId = b.ParentId;
+            var rends = b.bodyRenderers;
+            if (rends != null && rends.Length > 0)
+            {
+                bool shown = false;
+                float alpha = 0f;
+                for (int i = 0; i < rends.Length; i++)
+                {
+                    SpriteRenderer r = rends[i];
+                    if (r == null || !r.enabled || !r.gameObject.activeInHierarchy) continue;
+                    shown = true;
+                    float a = r.color.a;
+                    if (a > alpha) alpha = a;
+                }
+                st.Shown = shown;
+                st.Alpha = shown ? alpha : 0f;
+            }
+            ViperDeadBody v = c.TryCast<ViperDeadBody>();
+            if (v == null) return;
+            st.Viper = true;
+            float max = v.maxDissolveTime;
+            st.Dissolve = max > 0.01f ? M.Clamp01(v.dissolveCurrentTime / max) : 0f;
+        }
+
+        public static int PlayerId(PlayerControl p)
+        {
+            try { return PlayerIdImpl(p); } catch (Exception e) { Report("PlayerControl.PlayerId", e); return -1; }
+        }
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static int PlayerIdImpl(PlayerControl p) => p != null ? p.PlayerId : -1;
 
         /// <summary>Numéro de couleur du joueur à qui appartient un cadavre (-1 si inconnu).</summary>
         public static int DeadBodyColorId(Component c)

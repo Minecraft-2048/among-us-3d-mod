@@ -319,6 +319,46 @@ namespace AmongUs3D
         }
     }
 
+    /// <summary>
+    /// Le jeu lit les touches d'après leur place sur le clavier et les nomme comme sur un clavier américain :
+    /// "Q" désigne la touche en haut à gauche, qui porte la lettre A sur un clavier français.
+    /// </summary>
+    internal static class KeyLayout
+    {
+        private const string Row1 = "QWERTYUIOP", Row2 = "ASDFGHJKL", Row3 = "ZXCVBNM";
+
+        /// <summary>Code matériel (PC) de la touche qui porte ce nom sur un clavier américain ; 0 si ce n'est pas une lettre ou un signe.</summary>
+        public static int UsScanCode(string name)
+        {
+            if (string.IsNullOrEmpty(name)) return 0;
+            string n = name.Trim().ToUpperInvariant();
+            if (n.Length == 1)
+            {
+                int i = Row1.IndexOf(n[0]);
+                if (i >= 0) return 0x10 + i;
+                i = Row2.IndexOf(n[0]);
+                if (i >= 0) return 0x1E + i;
+                i = Row3.IndexOf(n[0]);
+                if (i >= 0) return 0x2C + i;
+            }
+            switch (n)
+            {
+                case "[": case "LEFT BRACKET": case "LEFTBRACKET": return 0x1A;
+                case "]": case "RIGHT BRACKET": case "RIGHTBRACKET": return 0x1B;
+                case ";": case "SEMICOLON": return 0x27;
+                case "'": case "QUOTE": return 0x28;
+                case "`": case "BACK QUOTE": case "BACKQUOTE": return 0x29;
+                case "\\": case "BACKSLASH": return 0x2B;
+                case ",": case "COMMA": return 0x33;
+                case ".": case "PERIOD": return 0x34;
+                case "/": case "SLASH": return 0x35;
+                case "-": case "MINUS": return 0x0C;
+                case "=": case "EQUALS": return 0x0D;
+            }
+            return 0;
+        }
+    }
+
     /// <summary>Un segment de mur sur le sol (pour la ligne de vue et la collision de la caméra).</summary>
     internal struct WallSeg
     {

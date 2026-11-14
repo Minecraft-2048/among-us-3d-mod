@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using TMPro;
 using UnityEngine;
 
@@ -8,7 +9,9 @@ namespace AmongUs3D
     /// <summary>
     /// Écrit en petit, en bas des boutons du jeu (Utiliser, Signaler, Tuer, Sabotage, Bouche, Capacité, Caresser,
     /// Carte...), la touche du clavier qui fait la même chose. La touche est lue dans les réglages de touches du
-    /// jeu (Rewired) : si le joueur les a changées, l'affichage suit.
+    /// jeu (Rewired) : si le joueur les a changées, l'affichage suit. Le jeu nomme les touches d'après leur place
+    /// sur un clavier américain : on affiche la lettre que porte vraiment cette touche sur le clavier du joueur
+    /// (sur un clavier français, "Q" devient "A").
     /// Les textes sont des enfants des boutons : ils apparaissent et disparaissent avec eux.
     /// </summary>
     internal sealed class KeyHints
@@ -281,12 +284,37 @@ namespace AmongUs3D
                 if (m == null) return null;
                 string n = m.elementIdentifierName;
                 if (string.IsNullOrEmpty(n)) n = m.keyCode.ToString();
-                return Short(n);
+                return Localize(Short(n));
             }
             catch (Exception e)
             {
                 ReportOnce("Rewired (touches du clavier)", e);
                 return null;
+            }
+        }
+
+        [DllImport("user32.dll")] private static extern IntPtr GetKeyboardLayout(uint thread);
+        [DllImport("user32.dll")] private static extern uint MapVirtualKeyEx(uint code, uint type, IntPtr layout);
+        private static bool _layoutBroken;
+
+        /// <summary>Lettre ou signe que porte, sur le clavier du joueur, la touche nommée d'après le clavier américain.</summary>
+        private static string Localize(string name)
+        {
+            int scan = KeyLayout.UsScanCode(name);
+            if (scan == 0 || _layoutBroken) return name;
+            try
+            {
+                if (Application.platform != RuntimePlatform.WindowsPlayer) return name;
+                IntPtr layout = GetKeyboardLayout(0);
+                uint vk = MapVirtualKeyEx((uint)scan, 1, layout);       // code matériel -> touche
+                uint ch = MapVirtualKeyEx(vk, 2, layout) & 0x7FFFFFFF;  // touche -> caractère (sans le drapeau "touche morte")
+                if (ch < 0x21 || ch > 0xFFFF) return name;
+                return char.ToUpperInvariant((char)ch).ToString();
+            }
+            catch (Exception)
+            {
+                _layoutBroken = true; // pas de user32 (autre système) : on garde le nom du jeu
+                return name;
             }
         }
 

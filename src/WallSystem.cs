@@ -78,7 +78,7 @@ namespace AmongUs3D
         }
 
         // Nature d'un morceau de collision physique.
-        private const int Hidden = 0, Low = 1, Face = 2, Tall = 3;
+        private const int Hidden = WallRules.Hidden, Low = WallRules.Low, Face = WallRules.Face, Tall = WallRules.Tall;
 
         private sealed class Edge
         {
@@ -94,6 +94,11 @@ namespace AmongUs3D
             public List<Poly> Polys;
             public readonly List<Edge> Edges = new List<Edge>();
             public bool ShortLayer, Furniture;
+            // Chaque polygone de la collision est une chaîne de bords : premier bord, nombre de bords, refermée ou non.
+            public readonly List<int> ChainStart = new List<int>(), ChainCount = new List<int>();
+            public readonly List<bool> ChainClosed = new List<bool>();
+            // Objets bas adossés à un mur (voir WallRules.FindBumps) : leur contour refermé.
+            public List<List<float>> BumpX, BumpY;
         }
 
         private struct BaseBox { public float X0, X1, Y, D; }
@@ -574,6 +579,9 @@ namespace AmongUs3D
                 {
                     int n = p.X.Length;
                     int segCount = p.Closed ? n : n - 1;
+                    solid.ChainStart.Add(solid.Edges.Count);
+                    solid.ChainCount.Add(segCount);
+                    solid.ChainClosed.Add(IsLoop(p));
                     for (int s = 0; s < segCount; s++)
                     {
                         var e = new Edge { Ax = p.X[s], Ay = p.Y[s], Bx = p.X[(s + 1) % n], By = p.Y[(s + 1) % n] };
@@ -626,6 +634,9 @@ namespace AmongUs3D
             float defaultFace = M.Clamp(Geo.Median(measured, 1f), 0.5f, maxFace);
             foreach ((Edge e, int k) in pendingDefault) e.D[k] = defaultFace;
 
+            // ---- petits meubles (chaises, pupitres...) : repérés avant que la règle suivante ne les prenne pour des murs
+            MarkFurniture(solids, 2.5f);
+
             // ---- côtés des blocs de mur : morceaux restés bas mais situés dans la zone d'une face voisine
             var bases = new List<BaseBox>();
             foreach (Solid s in solids)
@@ -638,7 +649,7 @@ namespace AmongUs3D
                     }
             foreach (Solid s in solids)
             {
-                if (s.ShortLayer) continue;
+                if (s.ShortLayer || s.Furniture) continue;
                 foreach (Edge e in s.Edges)
                     for (int k = 0; k < e.Kind.Length; k++)
                     {
@@ -655,28 +666,36 @@ namespace AmongUs3D
             }
 
             // ---- meubles : formes fermées, basses, de taille raisonnable
-            foreach (Solid s in solids)
+            MarkFurniture(solids, 7f);
+
+            // ---- murs restés bas à compléter, objets bas adossés à un mur (réglage MursComplets)
+            bool props = ModConfig.Decor3D.Value;
+            int completed = 0, bumps = 0;
+            if (ModConfig.CompleteWalls.Value)
             {
-                if (s.Polys.Count != 1) continue;
-                Poly p = s.Polys[0];
-                if (!IsLoop(p)) continue;
-                bool allLow = true;
-                foreach (Edge e in s.Edges)
-                    foreach (int kd in e.Kind)
-                        if (kd != Low) { allLow = false; break; }
-                if (!allLow) continue;
-                float minX = float.MaxValue, minY = float.MaxValue, maxX = float.MinValue, maxY = float.MinValue;
-                for (int i = 0; i < p.X.Length; i++)
+                var scanned = new List<WallSeg>();
+                foreach (WallSeg sg in _segments)
+                    if (_meshes[sg.owner].Scan) scanned.Add(sg);
+                foreach (Solid s in solids)
                 {
-                    minX = MathF.Min(minX, p.X[i]); maxX = MathF.Max(maxX, p.X[i]);
-                    minY = MathF.Min(minY, p.Y[i]); maxY = MathF.Max(maxY, p.Y[i]);
+                    if (s.Furniture || s.ShortLayer) continue;
+                    for (int ci = 0; ci < s.ChainStart.Count; ci++)
+                    {
+                        WallRules.Piece[] chain = ToChain(s, ci);
+                        if (chain.Length == 0) continue;
+                        completed += WallRules.CompleteWalls(chain, s.ChainClosed[ci], scanned, physical);
+                        if (props && obstacleH > 0.01f)
+                        {
+                            if (s.BumpX == null) { s.BumpX = new List<List<float>>(); s.BumpY = new List<List<float>>(); }
+                            WallRules.FindBumps(chain, s.ChainClosed[ci], physical, s.BumpX, s.BumpY);
+                        }
+                        FromChain(s, ci, chain);
+                    }
                 }
-                s.Furniture = maxX - minX <= 7f && maxY - minY <= 7f;
             }
 
             // ---- maillages
             int tallCount = 0, faceCount = 0, lowCount = 0, furniture = 0;
-            bool props = ModConfig.Decor3D.Value;
             _propCounts.Clear();
             _emergencySolid = props && solids.Exists(x => x.Furniture && NameOf(x).IndexOf("emergency", StringComparison.OrdinalIgnoreCase) >= 0);
             var runX = new List<float>();
@@ -713,6 +732,11 @@ namespace AmongUs3D
                     if (Commit(_b, s.Col, obstacleColor, layer, false, "AU3D_Muret", false) != null) lowCount++;
                 }
 
+                // objets adossés à un mur : leur contour refermé, en volume
+                if (s.BumpX != null)
+                    for (int bi = 0; bi < s.BumpX.Count; bi++)
+                        if (BuildProp(s.Col, "", s.BumpX[bi], s.BumpY[bi], true, kind, obstacleH, obstacleColor, layer)) { furniture++; bumps++; }
+
                 // dessin du mur redressé à la verticale
                 _bt.Clear();
                 foreach (Edge e in s.Edges)
@@ -740,7 +764,68 @@ namespace AmongUs3D
             }
 
             return $"{tallCount} murs physiques, {faceCount} faces redressées (hauteur type {defaultFace:0.00}), " +
-                   $"{lowCount + lowObstacles} murets, {furniture} meubles" + PropSummary();
+                   $"{lowCount + lowObstacles} murets, {furniture} meubles" + PropSummary() +
+                   $", {completed} morceaux de mur complétés, {bumps} objets adossés";
+        }
+
+        /// <summary>
+        /// Meubles : formes fermées de taille raisonnable, basses partout sauf là où elles touchent un mur
+        /// (un lit contre une cloison a un côté "caché" par ce mur : c'est quand même un meuble).
+        /// </summary>
+        private static void MarkFurniture(List<Solid> solids, float maxSize)
+        {
+            foreach (Solid s in solids)
+            {
+                if (s.Furniture || s.Polys.Count != 1) continue;
+                Poly p = s.Polys[0];
+                if (!IsLoop(p)) continue;
+                int low = 0, total = 0;
+                bool wall = false;
+                foreach (Edge e in s.Edges)
+                    foreach (int kd in e.Kind)
+                    {
+                        total++;
+                        if (kd == Low) low++;
+                        else if (kd != Hidden) wall = true;
+                    }
+                if (wall || total == 0 || low * 2 < total) continue;
+                float minX = float.MaxValue, minY = float.MaxValue, maxX = float.MinValue, maxY = float.MinValue;
+                for (int i = 0; i < p.X.Length; i++)
+                {
+                    minX = MathF.Min(minX, p.X[i]); maxX = MathF.Max(maxX, p.X[i]);
+                    minY = MathF.Min(minY, p.Y[i]); maxY = MathF.Max(maxY, p.Y[i]);
+                }
+                s.Furniture = maxX - minX <= maxSize && maxY - minY <= maxSize;
+            }
+        }
+
+        /// <summary>Les morceaux d'une chaîne de bords, dans l'ordre, pour <see cref="WallRules"/>.</summary>
+        private static WallRules.Piece[] ToChain(Solid s, int chain)
+        {
+            int e0 = s.ChainStart[chain], e1 = e0 + s.ChainCount[chain], count = 0;
+            for (int i = e0; i < e1; i++) count += s.Edges[i].Kind.Length;
+            var pieces = new WallRules.Piece[count];
+            int at = 0;
+            for (int i = e0; i < e1; i++)
+            {
+                Edge e = s.Edges[i];
+                for (int k = 0; k < e.Kind.Length; k++)
+                {
+                    PieceEnds(e, k, out float x0, out float y0, out float x1, out float y1);
+                    pieces[at++] = new WallRules.Piece { Ax = x0, Ay = y0, Bx = x1, By = y1, Kind = e.Kind[k] };
+                }
+            }
+            return pieces;
+        }
+
+        private static void FromChain(Solid s, int chain, WallRules.Piece[] pieces)
+        {
+            int e0 = s.ChainStart[chain], e1 = e0 + s.ChainCount[chain], at = 0;
+            for (int i = e0; i < e1; i++)
+            {
+                Edge e = s.Edges[i];
+                for (int k = 0; k < e.Kind.Length; k++) e.Kind[k] = pieces[at++].Kind;
+            }
         }
 
         private static void PieceEnds(Edge e, int k, out float x0, out float y0, out float x1, out float y1)

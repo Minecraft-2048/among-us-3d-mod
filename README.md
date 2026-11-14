@@ -31,15 +31,16 @@ Les autres joueurs n'ont **pas** besoin du mod et ne voient aucune différence.
 |---|---|
 | **Caméra** | Première personne (ou troisième personne avec F6). La souris tourne la caméra, haut/bas compris. En troisième personne, elle tourne autour du personnage : regarder vers le bas la fait monter, comme dans Minecraft. |
 | **Déplacements** | Relatifs à la caméra : avancer, reculer, pas de côté. La vitesse et les collisions restent celles du jeu. |
-| **Murs** | Construits là où le personnage bute réellement. Leur dessin d'origine (fenêtres, consoles de tâches, portes, sièges…) est **redressé à la verticale**. Les portes apparaissent quand elles se ferment. |
-| **Meubles** | De **vrais objets modelés en 3D**, comme dans Blender : tables rondes à pied central entourées de bancs, bouton d'urgence en dôme rouge, consoles inclinées, caisses à cadre, lits, chaises de bureau. Les meubles non reconnus gardent leur forme, avec des arêtes arrondies et une plinthe. Le dessus et les faces avant restent peints avec le dessin du jeu. |
+| **Murs** | Construits là où le personnage bute réellement. Leur dessin d'origine (fenêtres, consoles de tâches, portes, sièges…) est **redressé à la verticale**. Les portes apparaissent quand elles se ferment. Les murs sont **complets** : les trous dans un mur droit et les côtés de salle dont la cloison est en retrait sont refermés à pleine hauteur. |
+| **Meubles** | De **vrais objets modelés en 3D**, comme dans Blender : tables rondes à pied central entourées de bancs, bouton d'urgence en dôme rouge, consoles inclinées, caisses à cadre, lits (même collés à une cloison), chaises de bureau. Les meubles non reconnus gardent leur forme, avec des arêtes arrondies et une plinthe, y compris les objets adossés à un mur (cœur du réacteur, pupitre de la sécurité…). Le dessus et les faces avant restent peints avec le dessin du jeu. |
 | **Sol** | La carte 2D d'origine (bouches d'aération, surbrillances, décor) est plaquée au sol, mise à jour en direct. |
-| **Personnages** | Vrais modèles 3D aux couleurs du joueur : corps, visière, sac à dos, jambes qui marchent, contour noir. Les cadavres aussi (demi-corps et os). Le nom reste affiché au-dessus. Animaux et animations spéciales (échelle, bouche d'aération…) restent des images tournées vers la caméra. |
+| **Personnages** | Vrais modèles 3D aux couleurs du joueur : corps, visière, sac à dos, jambes qui marchent, contour noir. Les cadavres aussi (demi-corps et os). Le nom reste affiché au-dessus. |
+| **Animations** | Elles sont jouées **en 3D**. Quand un joueur est tué, son corps **tombe à plat** sur le sol, dans la direction où il regardait, avec un petit rebond. Tué par la **Vipère**, le corps s'affaisse, verdit et **se dissout** dans une flaque d'acide, au rythme du jeu. Les joueurs **sautent dans les bouches d'aération** et en ressortent, grimpent aux échelles dos à toi, et apparaissent en grandissant. |
 | **Chapeaux et accessoires** | Ils deviennent des **objets en volume**, fabriqués à partir de leur dessin : le chapeau posé sur la tête, la **visière** sur l'avant du visage, l'**animal** qui te suit (il se tourne dans le sens de la marche et sautille). De côté on retrouve le dessin du jeu, de face et de trois quarts ils ont une vraie épaisseur arrondie, avec un contour noir. La **combinaison** est peinte sur le corps et les jambes 3D. |
 | **Inventaire** | Dans le menu Inventaire, ton personnage est montré **en 3D** (avec chapeau, visière et combinaison) et tourne doucement sur lui-même. **F5** repasse l'aperçu en 2D (et inversement). |
 | **Fantômes** | Quand tu meurs, la vue **reste en 3D** et tu deviens un **fantôme 3D** transparent qui flotte, avec une queue à la place des jambes (ton chapeau aussi). Les autres fantômes sont en 3D de la même façon. |
 | **Animaux** | Quand tu caresses ton animal, la main et les cœurs s'affichent **sur l'animal**. En 1re personne, la caméra recule un peu et se tourne vers lui le temps de l'animation. |
-| **Touches sur les boutons** | En petit, en bas de chaque bouton du jeu (Tuer, Sabotage, Conduit, Signaler, Utiliser, Capacité, Caresser, Carte…), la touche du clavier qui fait la même chose, lue dans tes réglages de touches d'Among Us. |
+| **Touches sur les boutons** | En petit, en bas de chaque bouton du jeu (Tuer, Sabotage, Conduit, Signaler, Utiliser, Capacité, Caresser, Carte…), la touche du clavier qui fait la même chose, lue dans tes réglages de touches d'Among Us. La lettre affichée est celle de **ton** clavier : le jeu repère les touches par leur place, donc sur un clavier français (AZERTY) « Tuer » est sur **A**. |
 | **Vision** | Le rayon de vision du jeu est respecté : obscurité au-delà, joueurs invisibles hors de vue ou derrière un mur, sabotage des lumières, vision d'imposteur, vision totale des fantômes. |
 | **Interface** | Le HUD du jeu (Utiliser, Signaler, Tuer, tâches, carte, chat) reste affiché par-dessus la 3D. |
 | **Flèches de sabotage** | Elles suivent la caméra : posées juste au-dessus de l'endroit visé quand il est devant toi, sinon en boussole autour du centre de l'écran (en haut = devant, à droite = à droite, en bas = derrière). |
@@ -92,8 +93,14 @@ Pour désinstaller : supprime `BepInEx/plugins/AmongUs3D.dll`.
   The Skeld, The Fungle, le lobby ; souris, tâches, réunion, bouches d'aération, imposteur, cadavres.
   Version 1.1 : touches sur les boutons (équipier et imposteur), chapeau 3D, caresse de l'animal et fantôme 3D
   (rôle d'ange gardien de l'Entraînement), sur The Skeld.
+  Version 1.3, sur The Skeld en Entraînement : les quatre lits de l'infirmerie en 3D, le mur du couloir nord
+  complété ; un mannequin tué dont le corps bascule et finit couché à plat ; en Vipère, le corps qui se dissout
+  dans sa flaque en 15 secondes environ ; le saut dans une bouche d'aération et la sortie (vus à la 3e personne
+  avec `Vue2DDansLesBouches = false`) ; la touche [A] affichée sur « Tuer » avec un clavier français.
 - **Pas encore essayé** : MIRA HQ, Polus, The Airship (le mod s'y construit de la même façon, mais attends-toi à
-  des défauts d'affichage) et les versions Steam / Epic.
+  des défauts d'affichage) et les versions Steam / Epic. Pour la version 1.3 : les échelles et
+  l'apparition (il n'y a pas d'échelle sur The Skeld), le saut d'un autre joueur dans une bouche (essayé seulement
+  avec son propre personnage), les murs complétés des autres cartes.
 - **Android (Starlight)** : le code est prévu pour (commandes tactiles, boutons à l'écran), mais il n'a jamais
   tourné sur un téléphone, et Starlight ne charge que les mods approuvés par son équipe.
 
@@ -126,6 +133,8 @@ Ouvre-le avec un éditeur de texte (jeu fermé). Les plus utiles :
 | `Fleches3D` | `true` | Flèches de sabotage orientées selon la caméra ; `false` = flèches de la vue de dessus. |
 | `MursDebout` | `true` | Dessin des murs redressé ; `false` = ancien rendu à plat. |
 | `Decor3D` | `true` | Meubles modelés en 3D ; `false` = anciens blocs extrudés. |
+| `MursComplets` | `true` | Murs restés bas complétés à pleine hauteur, objets adossés aux murs en volume ; `false` = rendu de la version 1.2. |
+| `Animations3D` | `true` | Chute des corps, dissolution par la Vipère, bouches d'aération, échelles et apparition en 3D ; `false` = cadavre debout, images plates pendant ces animations. |
 | `MursExterieurs` | `Auto` | Murs aux limites de la carte (cartes d'intérieur seulement en `Auto`). |
 | `HauteurDesMurs` / `HauteurDesObstacles` | `2` / `0.3` | Hauteur des murs et des meubles. |
 | `DistanceDeVueDuSol` / `ResolutionDuSol` | `14` / auto | Zone et finesse du décor (à baisser si le jeu rame). |
@@ -141,7 +150,7 @@ Le journal est **`BepInEx/LogOutput.log`**. **F9** y écrit un diagnostic comple
 |---|---|
 | La souris est trop lente ou trop rapide | **F10 / F11** en jeu, ou `SensibiliteSouris`. |
 | Je n'arrive pas à cliquer sur un bouton | Maintiens **Alt gauche**, ou appuie sur **F8**. |
-| Des murs bizarres sur une carte | `MursDebout = false` pour revenir au rendu simple, puis envoie le journal. |
+| Des murs bizarres sur une carte | `MursComplets = false` d'abord, puis `MursDebout = false` pour revenir au rendu simple, et envoie le journal. |
 | Les personnages 3D ne te plaisent pas | `Personnages3D = false`. |
 | Un chapeau 3D a une forme bizarre | `Chapeaux3D = false` remet les chapeaux plats. |
 | Un meuble 3D a une forme bizarre | `Decor3D = false` remet les blocs simples. |
@@ -190,6 +199,7 @@ dotnet run --project tests/AmongUs3D.Tests.csproj -c Release
 | `src/View3D.cs` | Chef d'orchestre : quand activer la 3D, mise à jour à chaque image |
 | `src/Rig.cs` | Caméras : 3D, sol (carte vue de dessus), interface, mini-carte |
 | `src/WallSystem.cs` | Collisions de la carte → murs, faces redressées, meubles, portes, éclairage |
+| `src/WallRules.cs` | Règles pures (testées) : côté praticable, murs à compléter, objets adossés |
 | `src/ProxySystem.cs` | Joueurs, animaux, cadavres |
 | `src/CrewShape.cs`, `src/CrewModel.cs` | Forme et modèle 3D des personnages (vivants, cadavres, fantômes) |
 | `src/HatShape.cs`, `src/HatCapture.cs` | Chapeaux 3D : photo du dessin du chapeau, puis volume « gonflé » |

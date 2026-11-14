@@ -69,8 +69,13 @@ namespace AmongUs3D
         private bool BuildProp(Solid s, MapKind map, float obstacleH, Color obstacleColor, int layer)
         {
             Poly poly = s.Polys[0];
-            var xs = new List<float>(poly.X);
-            var ys = new List<float>(poly.Y);
+            return BuildProp(s.Col, NameOf(s), new List<float>(poly.X), new List<float>(poly.Y), false, map, obstacleH, obstacleColor, layer);
+        }
+
+        /// <param name="generic">vrai pour un contour d'objet adossé à un mur : sa forme est gardée telle quelle</param>
+        private bool BuildProp(Collider2D col, string name, List<float> xs, List<float> ys, bool generic, MapKind map,
+                               float obstacleH, Color obstacleColor, int layer)
+        {
             PropShape.Clean(xs, ys);
             if (xs.Count < 3) return false;
             Footprint f = PropShape.Analyze(xs, ys);
@@ -97,8 +102,7 @@ namespace AmongUs3D
                 if (d < bestConsole && d > 0.05f) { bestConsole = d; h.LookX = dx / d; h.LookY = dy / d; }
             }
 
-            string name = NameOf(s);
-            PropKind kind = PropShape.Classify(name, f, h);
+            PropKind kind = generic ? PropKind.Generic : PropShape.Classify(name, f, h);
             var solid = new ShapeMesh();
             var art = new ShapeMesh();
             float top = PropShape.Build(kind, f, xs, ys, h, solid, art);
@@ -106,9 +110,9 @@ namespace AmongUs3D
             float artK = top > 0.01f ? M.Clamp(obstacleH / top, 0.3f, 1.5f) : 1f;
 
             Load(_b, solid, true, artK);
-            if (Commit(_b, s.Col, U.Col(1f, 1f, 1f), layer, false, "AU3D_Meuble3D", false) == null) return false;
+            if (Commit(_b, col, U.Col(1f, 1f, 1f), layer, false, "AU3D_Meuble3D", false) == null) return false;
             Load(_bt, art, false, artK);
-            Commit(_bt, s.Col, U.Col(1f, 1f, 1f), layer, false, "AU3D_Meuble3DDessin", true);
+            Commit(_bt, col, U.Col(1f, 1f, 1f), layer, false, "AU3D_Meuble3DDessin", true);
 
             _propCounts.TryGetValue(kind, out int count);
             _propCounts[kind] = count + 1;

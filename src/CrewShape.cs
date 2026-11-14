@@ -148,6 +148,73 @@ namespace AmongUs3D
             return m;
         }
 
+        // ------------------------------------------------------------------ animations
+
+        /// <summary>Durée de la chute d'un corps (rebonds compris).</summary>
+        public const float FallDuration = 0.78f;
+
+        /// <summary>
+        /// Angle (radians) d'un corps qui tombe à plat vers l'avant, t secondes après la mort : 0 = debout, π/2 = couché.
+        /// Il bascule en accélérant, touche le sol après 0,42 s, rebondit deux fois, puis reste couché.
+        /// </summary>
+        public static float FallAngle(float t)
+        {
+            const float flat = MathF.PI * 0.5f, t1 = 0.42f, t2 = 0.22f, t3 = 0.14f;
+            if (t <= 0f) return 0f;
+            if (t < t1) return flat * MathF.Pow(t / t1, 2.2f);
+            t -= t1;
+            if (t < t2) return flat - 0.19f * MathF.Sin(MathF.PI * t / t2);
+            t -= t2;
+            if (t < t3) return flat - 0.06f * MathF.Sin(MathF.PI * t / t3);
+            return flat;
+        }
+
+        /// <summary>
+        /// De combien remonter une forme basculée de <paramref name="angle"/> vers l'avant (autour de ses pieds)
+        /// pour que son point le plus bas reste posé sur le sol.
+        /// </summary>
+        public static float RestLift(ShapeMesh m, float angle)
+        {
+            float s = MathF.Sin(angle), c = MathF.Cos(angle), min = 0f;
+            for (int i = 0; i < m.VertexCount; i++)
+            {
+                float z = -m.Y[i] * s + m.Z[i] * c;
+                if (z < min) min = z;
+            }
+            return -min;
+        }
+
+        /// <summary>
+        /// Saut dans une bouche d'aération (p de 0 à 1) : petit bond, puis le personnage rétrécit et s'enfonce.
+        /// La sortie est la même animation lue à l'envers (p → 1 - p).
+        /// </summary>
+        /// <param name="scale">taille du personnage (1 = normale)</param>
+        /// <param name="lift">hauteur des pieds au-dessus du sol, en tailles de personnage (négatif = dans le sol)</param>
+        public static void VentPop(float p, out float scale, out float lift)
+        {
+            p = M.Clamp01(p);
+            float hop = p < 0.45f ? MathF.Sin(MathF.PI * p / 0.45f) : 0f;
+            float sink = M.SmoothStep01((p - 0.4f) / 0.6f);
+            scale = 1f - 0.92f * sink;
+            lift = 0.22f * hop - 0.25f * sink;
+        }
+
+        /// <summary>Flaque d'acide (corps dissous par la Vipère) : disque plat au contour irrégulier, de rayon 0,5 environ.</summary>
+        public static ShapeMesh Puddle()
+        {
+            var m = new ShapeMesh();
+            const int n = 28;
+            int c = m.Add(0f, 0f, 0f, 0f, 0f, 1f, CrewZone.Body);
+            for (int i = 0; i <= n; i++)
+            {
+                float a = 2f * MathF.PI * (i % n) / n;
+                float r = 0.46f * (1f + 0.13f * MathF.Sin(3f * a + 0.6f) + 0.08f * MathF.Sin(5f * a + 2.1f));
+                m.Add(r * MathF.Cos(a), r * MathF.Sin(a), 0f, 0f, 0f, 1f, CrewZone.Body);
+            }
+            for (int i = 0; i < n; i++) AddTriangle(m, c, c + 1 + i, c + 2 + i);
+            return m;
+        }
+
         /// <summary>Surface décrite par deux paramètres : u de 0 (haut) à 1 (bas), phi autour de l'axe vertical.</summary>
         public delegate void Surface(float u, float phi, out float x, out float y, out float z);
 

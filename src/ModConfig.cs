@@ -63,6 +63,8 @@ namespace AmongUs3D
         public static ConfigEntry<float> ObstacleHeight;
         public static ConfigEntry<bool> RaiseWallArt;
         public static ConfigEntry<bool> Decor3D;
+        public static ConfigEntry<bool> CompleteWalls;
+        public static ConfigEntry<bool> Animations3D;
         public static ConfigEntry<ToggleMode> OuterWalls;
         public static ConfigEntry<bool> Characters3D;
         public static ConfigEntry<bool> SabotageArrows3D;
@@ -146,6 +148,8 @@ namespace AmongUs3D
             WallTrim = cfg.Bind(W, "MursAvecPlinthes", true, "Dessine une plinthe sombre en bas des murs unis et un bandeau en haut, pour qu'ils ressemblent à de vraies cloisons.");
             RaiseWallArt = cfg.Bind(W, "MursDebout", true, "Redresse à la verticale le dessin des murs (fenêtres, consoles de tâches...) à l'endroit où le personnage bute réellement. false = ancien rendu (dessin des murs à plat au sol + muret bas).");
             Decor3D = cfg.Bind(W, "Decor3D", true, "Les meubles sont de vrais objets modelés en 3D : tables rondes à pied central entourées de bancs, bouton d'urgence en dôme, consoles inclinées, caisses à cadre, lits, chaises, et des formes aux arêtes arrondies pour le reste (dessus et faces avant peints avec le dessin du jeu). false = ancien rendu : blocs extrudés sur les collisions.");
+            CompleteWalls = cfg.Bind(W, "MursComplets", true, "Complète les murs restés bas : trous dans un mur droit, côtés de salle dont le mur est en retrait. Les objets bas adossés à un mur (réacteur, pupitre...) deviennent des volumes. false = rendu de la version 1.2.");
+            Animations3D = cfg.Bind(W, "Animations3D", true, "Les animations des personnages sont jouées en 3D : le corps d'un joueur tué tombe à plat sur le sol (et se dissout s'il a été tué par la Vipère), les joueurs sautent dans les bouches d'aération et en ressortent, grimpent aux échelles et apparaissent en 3D. false = cadavre debout et images plates pendant ces animations.");
             OuterWalls = cfg.Bind(W, "MursExterieurs", ToggleMode.Auto, "Transforme aussi en murs les limites de la carte derrière lesquelles il n'y a rien. Auto = seulement sur les cartes d'intérieur (pas Polus ni The Fungle).");
             SabotageArrows3D = cfg.Bind(W, "Fleches3D", true, "Les flèches du jeu (sabotages...) suivent la caméra 3D : posées au-dessus de l'endroit visé quand il est devant soi, sinon en boussole autour du centre de l'écran (en haut = devant, en bas = derrière). false = flèches de la vue de dessus.");
             Hats3D = cfg.Bind(W, "Chapeaux3D", true, "Les chapeaux deviennent des objets en volume posés sur la tête des personnages 3D (fabriqués à partir de leur dessin). false = images plates tournées vers la caméra.");
