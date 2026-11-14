@@ -191,8 +191,8 @@ namespace AmongUs3D
         private Mesh _bodyMesh, _legMesh;
         private Il2CppStructArray<Color32> _bodyColors, _legColors;
         private Material _solid, _outline;
-        private readonly Renderer[] _renderers = new Renderer[8];
-        private readonly bool[] _isOutline = new bool[8];
+        private readonly Renderer[] _renderers = new Renderer[16];
+        private readonly bool[] _isOutline = new bool[16];
         private int _rendererCount;
         private readonly ModelKind _kind;
         private int _layer;
@@ -202,12 +202,15 @@ namespace AmongUs3D
         private float _lastAlpha = -1f;
         private int _order = int.MinValue;
         private float _height = -1f;
-        private GameObject _hatGo, _hatOutlineGo;
-        private MeshFilter _hatFilter, _hatOutlineFilter;
-        private Mesh _hatMesh; // partagé (cache de ProxySystem) : jamais détruit ici
+        // Accessoires 3D (chapeau, visière) : maillages partagés (caches), jamais détruits ici.
+        public const int SlotHat = 0, SlotVisor = 1;
+        private readonly GameObject[] _accGo = new GameObject[2], _accOutlineGo = new GameObject[2];
+        private readonly MeshFilter[] _accFilter = new MeshFilter[2], _accOutlineFilter = new MeshFilter[2];
+        private readonly Mesh[] _accMesh = new Mesh[2];
+        private SkinPaint _skin;
 
         public bool Shown => _shown;
-        public bool HasHat => _hatMesh != null;
+        public bool HasHat => _accMesh[SlotHat] != null;
 
         private CrewModel(ModelKind kind) { _kind = kind; }
 
@@ -275,52 +278,79 @@ namespace AmongUs3D
         {
             if (colorId == _colorId) return;
             _colorId = colorId;
-            Game.TryPlayerColors(colorId, out Color32 main, out Color32 shadow, out Color32 visor);
+            Repaint();
+        }
+
+        /// <summary>Combinaison 3D : couleurs par sommet du corps et des jambes (null = couleurs du joueur seules).</summary>
+        public void SetSkin(SkinPaint skin)
+        {
+            if (ReferenceEquals(skin, _skin)) return;
+            _skin = skin;
+            if (_colorId != int.MinValue) Repaint();
+        }
+
+        private void Repaint()
+        {
+            Game.TryPlayerColors(_colorId, out Color32 main, out Color32 shadow, out Color32 visor);
             CrewKit.Paint(CrewKit.ShapeOf(_kind), _bodyColors, main, shadow, visor);
+            Overlay(_bodyColors, _skin?.Body);
             _bodyMesh.colors32 = _bodyColors;
             if (_legMesh != null)
             {
                 CrewKit.Paint(CrewKit.LegShape, _legColors, main, shadow, visor);
+                Overlay(_legColors, _skin?.Leg);
                 _legMesh.colors32 = _legColors;
             }
         }
 
-        /// <summary>Pose (ou retire, avec null) le chapeau 3D sur la tête, avec son contour noir.</summary>
-        public void SetHat(Mesh mesh, Mesh outline)
+        private static void Overlay(Il2CppStructArray<Color32> colors, Color32[] paint)
         {
-            if (ReferenceEquals(mesh, _hatMesh)) return;
-            _hatMesh = mesh;
+            if (paint == null || paint.Length != colors.Length) return;
+            for (int i = 0; i < paint.Length; i++)
+                if (paint[i].a != 0) colors[i] = paint[i];
+        }
+
+        /// <summary>Pose (ou retire, avec null) le chapeau 3D sur la tête, avec son contour noir.</summary>
+        public void SetHat(Mesh mesh, Mesh outline) => SetAccessory(SlotHat, mesh, outline, "chapeau");
+
+        /// <summary>Pose (ou retire) la visière cosmétique 3D sur l'avant de la tête.</summary>
+        public void SetVisor(Mesh mesh, Mesh outline) => SetAccessory(SlotVisor, mesh, outline, "visiere");
+
+        private void SetAccessory(int slot, Mesh mesh, Mesh outline, string name)
+        {
+            if (ReferenceEquals(mesh, _accMesh[slot])) return;
+            _accMesh[slot] = mesh;
             if (mesh == null)
             {
-                if (U.Alive(_hatGo)) _hatGo.SetActive(false);
-                if (U.Alive(_hatOutlineGo)) _hatOutlineGo.SetActive(false);
+                if (U.Alive(_accGo[slot])) _accGo[slot].SetActive(false);
+                if (U.Alive(_accOutlineGo[slot])) _accOutlineGo[slot].SetActive(false);
                 return;
             }
-            if (!U.Alive(_hatGo))
+            if (!U.Alive(_accGo[slot]))
             {
-                _hatGo = AddPart("chapeau", _bodyT, mesh, _solid, false);
-                _hatFilter = _hatGo.GetComponent<MeshFilter>();
+                _accGo[slot] = AddPart(name, _bodyT, mesh, _solid, false);
+                _accFilter[slot] = _accGo[slot].GetComponent<MeshFilter>();
             }
             else
             {
-                _hatFilter.sharedMesh = mesh;
+                _accFilter[slot].sharedMesh = mesh;
             }
-            _hatGo.SetActive(true);
+            _accGo[slot].SetActive(true);
             if (outline == null)
             {
-                if (U.Alive(_hatOutlineGo)) _hatOutlineGo.SetActive(false);
+                if (U.Alive(_accOutlineGo[slot])) _accOutlineGo[slot].SetActive(false);
                 return;
             }
-            if (!U.Alive(_hatOutlineGo))
+            if (!U.Alive(_accOutlineGo[slot]))
             {
-                _hatOutlineGo = AddPart("chapeau contour", _bodyT, outline, _outline, true);
-                _hatOutlineFilter = _hatOutlineGo.GetComponent<MeshFilter>();
+                _accOutlineGo[slot] = AddPart(name + " contour", _bodyT, outline, _outline, true);
+                _accOutlineFilter[slot] = _accOutlineGo[slot].GetComponent<MeshFilter>();
             }
             else
             {
-                _hatOutlineFilter.sharedMesh = outline;
+                _accOutlineFilter[slot].sharedMesh = outline;
             }
-            _hatOutlineGo.SetActive(true);
+            _accOutlineGo[slot].SetActive(true);
         }
 
         public void Show(bool on)
@@ -403,7 +433,129 @@ namespace AmongUs3D
             U.SafeDestroy(_solid);
             U.SafeDestroy(_outline);
             Root = null;
-            _hatMesh = null;
+            _accMesh[SlotHat] = _accMesh[SlotVisor] = null;
+            _skin = null;
+        }
+    }
+
+    /// <summary>Combinaison 3D : couleur de chaque sommet du corps et des jambes (a = 0 : couleur du joueur).</summary>
+    internal sealed class SkinPaint
+    {
+        public Color32[] Body, Leg;
+    }
+
+    /// <summary>Objet 3D fabriqué à partir d'un dessin (chapeau, visière, animal) : volume et contour noir.</summary>
+    internal sealed class HatMeshes
+    {
+        public Mesh Solid, Outline;
+
+        public void Destroy()
+        {
+            U.SafeDestroy(Solid);
+            U.SafeDestroy(Outline);
+        }
+    }
+
+    /// <summary>Animal en volume : son dessin "gonflé", qui se tourne dans le sens de la marche et sautille en avançant.</summary>
+    internal sealed class PetModel
+    {
+        private GameObject _root;
+        private Transform _rootT, _bodyT;
+        private MeshFilter _solidF, _outlineF;
+        private MeshRenderer _solidR, _outlineR;
+        private Material _solid, _outline;
+        private HatMeshes _meshes;
+        private float _yaw, _phase, _amp, _lastAlpha = -1f;
+        private bool _yawInit, _shown;
+        private int _order = int.MinValue;
+
+        public bool Shown => _shown;
+        public bool Alive => U.Alive(_root);
+
+        public static PetModel Create(CrewKit kit, Transform parent, int layer)
+        {
+            var m = new PetModel();
+            try
+            {
+                m._root = new GameObject("AU3D_Pet3D");
+                m._root.layer = layer;
+                m._rootT = m._root.transform;
+                m._rootT.SetParent(parent, false);
+                m._solid = new Material(kit.Solid);
+                m._outline = new Material(kit.Outline);
+                var body = new GameObject("corps");
+                body.layer = layer;
+                m._bodyT = body.transform;
+                m._bodyT.SetParent(m._rootT, false);
+                m._solidF = body.AddComponent<MeshFilter>();
+                m._solidR = body.AddComponent<MeshRenderer>();
+                m._solidR.sharedMaterial = m._solid;
+                var outline = new GameObject("contour");
+                outline.layer = layer;
+                outline.transform.SetParent(m._bodyT, false);
+                m._outlineF = outline.AddComponent<MeshFilter>();
+                m._outlineR = outline.AddComponent<MeshRenderer>();
+                m._outlineR.sharedMaterial = m._outline;
+                m._root.SetActive(false);
+                return m;
+            }
+            catch
+            {
+                m.Destroy();
+                throw;
+            }
+        }
+
+        public void SetMesh(HatMeshes meshes)
+        {
+            if (ReferenceEquals(meshes, _meshes)) return;
+            _meshes = meshes;
+            _solidF.sharedMesh = meshes?.Solid;
+            _outlineF.sharedMesh = meshes?.Outline;
+        }
+
+        public void Show(bool on)
+        {
+            if (on == _shown) return;
+            _shown = on;
+            if (U.Alive(_root)) _root.SetActive(on);
+        }
+
+        public void SetOrder(int order)
+        {
+            if (order == _order) return;
+            _order = order;
+            _solidR.sortingOrder = order;
+            _outlineR.sortingOrder = order + 1;
+        }
+
+        public void Update(float x, float y, float faceX, float faceY, bool moving, float dt, float alpha)
+        {
+            float target = MathF.Atan2(faceX, faceY) / M.Deg2Rad;
+            if (!_yawInit) { _yaw = target; _yawInit = true; }
+            else _yaw += M.DeltaAngle(_yaw, target) * (1f - MathF.Exp(-dt * 12f));
+            _rootT.position = U.V3(x, y, 0f);
+            _rootT.rotation = U.RotationZ(-_yaw);
+            _amp += ((moving ? 1f : 0f) - _amp) * (1f - MathF.Exp(-dt * 10f));
+            if (_amp > 0.01f) _phase += dt * 14f;
+            else _phase = 0f;
+            _bodyT.localPosition = U.V3(0f, 0f, -MathF.Abs(MathF.Sin(_phase)) * 0.05f * _amp);
+            if (MathF.Abs(alpha - _lastAlpha) > 0.004f)
+            {
+                _lastAlpha = alpha;
+                Color c = U.Col(1f, 1f, 1f, M.Clamp01(alpha));
+                _solid.SetColor("_Color", c);
+                _outline.SetColor("_Color", c);
+            }
+        }
+
+        public void Destroy()
+        {
+            U.SafeDestroy(_root);
+            U.SafeDestroy(_solid);
+            U.SafeDestroy(_outline);
+            _root = null;
+            _meshes = null;
         }
     }
 }

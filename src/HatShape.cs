@@ -279,6 +279,44 @@ namespace AmongUs3D
             return t[j * cw + i];
         }
 
+        /// <summary>
+        /// Couleur du dessin au point (y, z) du profil, dans le même repère que <see cref="Build"/> :
+        /// faux si le dessin y est transparent.
+        /// </summary>
+        public static bool SampleProfile(byte[] rgba, int w, int h, float y0, float cellY, float z0, float cellZ, float y, float z,
+                                         out byte r, out byte g, out byte b)
+        {
+            r = g = b = 0;
+            if (rgba == null || MathF.Abs(cellY) < 1e-9f || MathF.Abs(cellZ) < 1e-9f) return false;
+            int i = (int)MathF.Floor((y - y0) / cellY), j = (int)MathF.Floor((z - z0) / cellZ);
+            if (i < 0 || j < 0 || i >= w || j >= h) return false;
+            int k = j * w + i;
+            if (rgba[k * 4 + 3] < AlphaCut) return false;
+            Unpremultiply(rgba, k, out float fr, out float fg, out float fb);
+            r = B(fr); g = B(fg); b = B(fb);
+            return true;
+        }
+
+        /// <summary>
+        /// Comme <see cref="SampleProfile"/>, mais en rentrant un peu vers le centre (cy, cz) de la forme pour éviter
+        /// le contour noir du dessin quand le point est au bord de la silhouette.
+        /// </summary>
+        public static bool SampleInside(byte[] rgba, int w, int h, float y0, float cellY, float z0, float cellZ, float y, float z,
+                                        float cy, float cz, out byte r, out byte g, out byte b)
+        {
+            bool any = false;
+            byte dr = 0, dg = 0, db = 0;
+            for (int step = 0; step < 4; step++)
+            {
+                float k = 1f - 0.12f * step;
+                if (!SampleProfile(rgba, w, h, y0, cellY, z0, cellZ, cy + (y - cy) * k, cz + (z - cz) * k, out r, out g, out b)) continue;
+                if (r + g + b > 90) return true;
+                if (!any) { any = true; dr = r; dg = g; db = b; }
+            }
+            r = dr; g = dg; b = db;
+            return any;
+        }
+
         private static void Unpremultiply(byte[] rgba, int k, out float r, out float g, out float b)
         {
             float a = rgba[k * 4 + 3];

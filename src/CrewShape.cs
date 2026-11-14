@@ -112,7 +112,7 @@ namespace AmongUs3D
         {
             var m = new ShapeMesh();
             // tronc : du haut des jambes (0,20) au sommet de la tête (1,00)
-            AddSuperEllipsoid(m, 0f, 0f, 0.60f, BodyRadiusX, BodyRadiusY, 0.40f, 0.62f, 0.86f, 14, 22, CrewZone.Body);
+            AddSuperEllipsoid(m, 0f, 0f, 0.60f, BodyRadiusX, BodyRadiusY, 0.40f, 0.62f, 0.86f, 28, 40, CrewZone.Body); // fin : porte la combinaison
             // sac à dos, dans le dos
             AddSuperEllipsoid(m, 0f, -0.285f, 0.50f, 0.185f, 0.105f, 0.20f, 0.5f, 0.5f, 8, 14, CrewZone.Backpack);
             // visière, bombée vers l'avant

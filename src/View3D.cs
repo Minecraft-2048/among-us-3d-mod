@@ -29,6 +29,7 @@ namespace AmongUs3D
         private readonly Controls _controls = new Controls();
         private readonly WallSystem _walls = new WallSystem();
         private readonly ProxySystem _proxies = new ProxySystem();
+        private readonly InventoryPreview _inventory = new InventoryPreview();
         private readonly OnScreenButtons _buttons = new OnScreenButtons();
         private readonly ArrowSystem _arrows = new ArrowSystem();
         private readonly KeyHints _keyHints = new KeyHints();
@@ -102,6 +103,7 @@ namespace AmongUs3D
 
         private void Update()
         {
+            _inventory.Update(Time.unscaledDeltaTime, _layer3D, _layerMini);
             HandleHotkeys();
 
             _local = Game.LocalPlayer;
@@ -199,7 +201,11 @@ namespace AmongUs3D
 
         private void HandleHotkeys()
         {
-            if (InputCompat.KeyDown(ModConfig.KeyToggle3D.Value)) Toggle3D();
+            if (InputCompat.KeyDown(ModConfig.KeyToggle3D.Value))
+            {
+                if (_inventory.MenuOpen) _inventory.Toggle(); // inventaire ouvert : F5 bascule l'aperçu du personnage
+                else Toggle3D();
+            }
             if (InputCompat.KeyDown(ModConfig.KeyToggleCamera.Value)) ToggleCamera();
             if (InputCompat.KeyDown(ModConfig.KeyToggleMinimap.Value)) ToggleMinimap();
             if (InputCompat.KeyDown(ModConfig.KeyMouseCapture.Value))

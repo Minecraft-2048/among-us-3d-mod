@@ -11,6 +11,7 @@
     <Compile Include="../src/MathUtil.cs" />
     <Compile Include="../src/CrewShape.cs" />
     <Compile Include="../src/HatShape.cs" />
+    <Compile Include="../src/PropShape.cs" />
     <Compile Include="MathTests.cs" />
   </ItemGroup>
 </Project>

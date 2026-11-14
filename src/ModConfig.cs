@@ -42,6 +42,8 @@ namespace AmongUs3D
         public static ConfigEntry<bool> KeyHintsOnButtons;
         public static ConfigEntry<bool> LookAtPetWhenPetting;
         public static ConfigEntry<bool> Hats3D;
+        public static ConfigEntry<bool> Accessories3D;
+        public static ConfigEntry<bool> Inventory3D;
         public static ConfigEntry<bool> Ghosts3D;
         public static ConfigEntry<bool> MouseLookAtStart;
         public static ConfigEntry<bool> ClickToUse;
@@ -60,6 +62,7 @@ namespace AmongUs3D
         public static ConfigEntry<float> WallHeight;
         public static ConfigEntry<float> ObstacleHeight;
         public static ConfigEntry<bool> RaiseWallArt;
+        public static ConfigEntry<bool> Decor3D;
         public static ConfigEntry<ToggleMode> OuterWalls;
         public static ConfigEntry<bool> Characters3D;
         public static ConfigEntry<bool> SabotageArrows3D;
@@ -142,9 +145,12 @@ namespace AmongUs3D
             ObstacleHeight = cfg.Bind(W, "HauteurDesObstacles", 0.3f, "Hauteur des obstacles bas (tables, caisses...). 0 = ne pas les afficher.");
             WallTrim = cfg.Bind(W, "MursAvecPlinthes", true, "Dessine une plinthe sombre en bas des murs unis et un bandeau en haut, pour qu'ils ressemblent à de vraies cloisons.");
             RaiseWallArt = cfg.Bind(W, "MursDebout", true, "Redresse à la verticale le dessin des murs (fenêtres, consoles de tâches...) à l'endroit où le personnage bute réellement. false = ancien rendu (dessin des murs à plat au sol + muret bas).");
+            Decor3D = cfg.Bind(W, "Decor3D", true, "Les meubles sont de vrais objets modelés en 3D : tables rondes à pied central entourées de bancs, bouton d'urgence en dôme, consoles inclinées, caisses à cadre, lits, chaises, et des formes aux arêtes arrondies pour le reste (dessus et faces avant peints avec le dessin du jeu). false = ancien rendu : blocs extrudés sur les collisions.");
             OuterWalls = cfg.Bind(W, "MursExterieurs", ToggleMode.Auto, "Transforme aussi en murs les limites de la carte derrière lesquelles il n'y a rien. Auto = seulement sur les cartes d'intérieur (pas Polus ni The Fungle).");
             SabotageArrows3D = cfg.Bind(W, "Fleches3D", true, "Les flèches du jeu (sabotages...) suivent la caméra 3D : posées au-dessus de l'endroit visé quand il est devant soi, sinon en boussole autour du centre de l'écran (en haut = devant, en bas = derrière). false = flèches de la vue de dessus.");
             Hats3D = cfg.Bind(W, "Chapeaux3D", true, "Les chapeaux deviennent des objets en volume posés sur la tête des personnages 3D (fabriqués à partir de leur dessin). false = images plates tournées vers la caméra.");
+            Accessories3D = cfg.Bind(W, "Accessoires3D", true, "La visière, la combinaison et l'animal deviennent aussi des objets 3D, comme les chapeaux : la visière et l'animal sont fabriqués à partir de leur dessin, la combinaison est peinte sur le corps 3D. false = visière et combinaison masquées sur les modèles 3D, animal en image plate.");
+            Inventory3D = cfg.Bind(G, "Inventaire3D", true, "Dans l'inventaire (menu de personnalisation), l'aperçu du personnage est en 3D et tourne doucement. F5 (touche Basculer3D) passe de la 3D à la 2D pendant que le menu est ouvert.");
             Ghosts3D = cfg.Bind(W, "Fantomes3D", true, "Les fantômes (visibles quand on est mort soi-même) sont des modèles 3D transparents qui flottent. false = images plates.");
             Characters3D = cfg.Bind(W, "Personnages3D", true, "Les joueurs et les cadavres sont de vrais modèles 3D (corps, visière, sac à dos, jambes animées). false = panneaux plats tournés vers la caméra.");
             CharacterScale = cfg.Bind(W, "TaillePersonnages3D", 1f, "Taille des personnages 3D (1 = taille du jeu).");

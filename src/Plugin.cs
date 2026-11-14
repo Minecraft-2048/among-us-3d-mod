@@ -16,7 +16,7 @@ namespace AmongUs3D
     {
         public const string Id = "fr.mods.amongus3d";
         public const string Name = "AmongUs3D";
-        public const string Version = "1.1.0";
+        public const string Version = "1.2.0";
 
         internal static ManualLogSource Logger;
         private Harmony _harmony;

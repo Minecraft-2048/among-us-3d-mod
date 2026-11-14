@@ -30,6 +30,8 @@ internal static class MathTests
         WallStrips();
         GhostShape();
         HatShapes();
+        Props();
+        SkinSampling();
 
         Console.WriteLine($"{_passed} tests réussis, {_failed} échecs");
         return _failed == 0 ? 0 : 1;
@@ -78,6 +80,105 @@ internal static class MathTests
         }
         Check(minY < -0.2f && minZ < 0.1f, "fantôme : la queue part vers l'arrière et descend près du sol");
         Check(maxZ > 0.95f && maxZ < 1.05f && maxR < 0.32f, "fantôme : même tête que le personnage vivant");
+    }
+
+    private static void Polygon(List<float> xs, List<float> ys, float cx, float cy, float rx, float ry, int n, float angle = 0f)
+    {
+        xs.Clear(); ys.Clear();
+        float c = MathF.Cos(angle), s = MathF.Sin(angle);
+        for (int i = 0; i < n; i++)
+        {
+            float a = MathF.PI * (2f * i / n + 1f / n), u = rx * MathF.Cos(a), v = ry * MathF.Sin(a);
+            xs.Add(cx + u * c - v * s); ys.Add(cy + u * s + v * c);
+        }
+    }
+
+    private static void Props()
+    {
+        var xs = new List<float>();
+        var ys = new List<float>();
+        var indoor = new PropHints { Indoor = true, Height = 0.3f, BaseColor = 0x4C5260, WallX = 0f, WallY = 1f, LookX = 0f, LookY = 1f };
+
+        Polygon(xs, ys, 5f, -2f, 1.3f, 1.3f, 16);
+        Footprint round = PropShape.Analyze(xs, ys);
+        Check(round.Roundness > 0.95f && round.IsRound && Near(round.Cx, 5f, 0.05f) && Near(round.Cy, -2f, 0.05f), "meuble : disque reconnu et centré");
+        Check(PropShape.Classify("Collider", round, indoor) == PropKind.RoundTable, "meuble : grande forme ronde = table ronde");
+        PropHints outdoor = indoor;
+        outdoor.Indoor = false;
+        Check(PropShape.Classify("Rock", round, outdoor) == PropKind.Generic, "meuble : forme ronde en extérieur = forme générique");
+
+        // rectangle de 2 x 0,8 tourné de 30° : centre, axes et demi-tailles retrouvés
+        float ang = MathF.PI / 6f;
+        Polygon(xs, ys, 2f, 3f, 1f * MathF.Sqrt(2f), 0.4f * MathF.Sqrt(2f), 4, ang);
+        Footprint box = PropShape.Analyze(xs, ys);
+        Check(Near(box.HalfLen, 1f, 0.01f) && Near(box.HalfWid, 0.4f, 0.01f) && box.Fill > 0.99f && box.IsBox, "meuble : rectangle orienté retrouvé");
+        Check(Near(MathF.Abs(box.Ux * MathF.Cos(ang) + box.Uy * MathF.Sin(ang)), 1f, 0.01f) && Near(box.Cx, 2f) && Near(box.Cy, 3f), "meuble : grand axe et centre du rectangle");
+        Check(PropShape.Classify("nav_chairmid", box, indoor) == PropKind.Chair, "meuble : chaise reconnue à son nom");
+        Check(PropShape.Classify("Leftbox", box, indoor) == PropKind.Crate, "meuble : caisse reconnue à son nom");
+        Check(PropShape.Classify("admin_bridge", box, indoor) == PropKind.Console, "meuble : console reconnue à son nom");
+        Check(PropShape.Classify("EmergencyConsole", round, indoor) == PropKind.Button && PropShape.Classify("WeaponConsole", box, indoor) == PropKind.Chair,
+              "meuble : bouton d'urgence et poste d'armes reconnus");
+        PropHints emergency = indoor;
+        emergency.Emergency = true;
+        Check(PropShape.Classify("Collider", round, emergency) == PropKind.RoundTable && PropShape.Classify("x", box, emergency) == PropKind.Table,
+              "meuble : le support du bouton d'urgence est une table");
+        Check(PropShape.Contains(xs, ys, 2f, 3f) && !PropShape.Contains(xs, ys, 4f, 3f), "meuble : point dans le polygone");
+
+        var cleanX = new List<float> { 0f, 0f, 1f, 1f, 0f };
+        var cleanY = new List<float> { 0f, 1f, 1f, 0f, 0f };
+        PropShape.Clean(cleanX, cleanY);
+        Check(cleanX.Count == 4 && Geo.SignedArea(cleanX, cleanY) > 0f, "meuble : point de fermeture retiré, sens direct");
+
+        // chaque sorte de meuble : maillage valide, coloré, posé au sol et contenu dans son empreinte
+        foreach (PropKind kind in Enum.GetValues(typeof(PropKind)))
+        {
+            bool roundKind = kind == PropKind.RoundTable || kind == PropKind.Drum;
+            if (roundKind) Polygon(xs, ys, 5f, -2f, kind == PropKind.Drum ? 0.4f : 1.3f, kind == PropKind.Drum ? 0.4f : 1.1f, 20);
+            else Polygon(xs, ys, 2f, 3f, 0.9f * MathF.Sqrt(2f), 0.45f * MathF.Sqrt(2f), 4, ang);
+            PropShape.Clean(xs, ys);
+            Footprint fp = PropShape.Analyze(xs, ys);
+            var solid = new ShapeMesh();
+            var art = new ShapeMesh();
+            float top = PropShape.Build(kind, fp, xs, ys, emergency, solid, art);
+            bool inside = true, grounded = false;
+            for (int i = 0; i < solid.VertexCount; i++)
+            {
+                inside &= PropShape.Near(fp, solid.X[i], solid.Y[i], 0.03f) && solid.Z[i] > -1e-4f && solid.Z[i] < 0.8f;
+                grounded |= solid.Z[i] < 1e-3f;
+            }
+            bool painted = kind == PropKind.Chair || kind == PropKind.Bed || kind == PropKind.Button || art.Tris.Count > 0;
+            Check(ValidMesh(solid) && ValidMesh(art) && solid.HasColors && solid.Tris.Count > 30 && top > 0.1f && top < 0.7f,
+                  "meuble 3D " + kind + " : maillage valide");
+            Check(inside && grounded && painted, "meuble 3D " + kind + " : posé au sol, dans son empreinte, dessus peint");
+            if (kind == PropKind.RoundTable || kind == PropKind.Button)
+            {
+                bool red = false;
+                for (int i = 0; i < solid.VertexCount; i++) red |= solid.Rgba[i] >> 8 == 0xE3262B && solid.Z[i] > top;
+                Check(red, "meuble 3D : dôme rouge du bouton d'urgence sur la table");
+            }
+        }
+
+        Check(PropShape.Shade(0f, 0f, 1f, 0.4f) > 0.9f && PropShape.Shade(0f, 0f, -1f, 0.4f) < 0.6f, "meuble : dessus éclairé, dessous sombre");
+        Check(PropShape.Shade(0f, -1f, 0f, 0f) < PropShape.Shade(0f, -1f, 0f, 0.3f), "meuble : bas assombri au contact du sol");
+    }
+
+    private static void SkinSampling()
+    {
+        // image 8 x 8 : carré rouge bordé de noir, transparent autour ; un pixel = 0,125
+        const int W = 8, H = 8;
+        var px = new byte[W * H * 4];
+        for (int j = 1; j < 7; j++)
+        for (int i = 1; i < 7; i++)
+        {
+            int k = (j * W + i) * 4;
+            bool border = i == 1 || i == 6 || j == 1 || j == 6;
+            px[k] = border ? (byte)0 : (byte)220; px[k + 1] = border ? (byte)0 : (byte)30; px[k + 2] = border ? (byte)0 : (byte)40; px[k + 3] = 255;
+        }
+        Check(HatShape.SampleProfile(px, W, H, 0f, 0.125f, 0f, 0.125f, 0.5f, 0.5f, out byte r, out _, out _) && r == 220, "combinaison : couleur du dessin lue");
+        Check(!HatShape.SampleProfile(px, W, H, 0f, 0.125f, 0f, 0.125f, 0.05f, 0.5f, out _, out _, out _), "combinaison : transparent ignoré");
+        Check(HatShape.SampleInside(px, W, H, 0f, 0.125f, 0f, 0.125f, 0.8f, 0.5f, 0.5f, 0.5f, out r, out _, out _) && r == 220, "combinaison : contour noir évité");
+        Check(HatShape.SampleProfile(px, W, H, 1f, -0.125f, 0f, 0.125f, 0.5f, 0.5f, out r, out _, out _) && r == 220, "combinaison : dessin tourné vers la gauche");
+        Check(ValidMesh(CrewShape.Body()) && FacesOutward(CrewShape.Body()), "corps 3D plus fin : maillage valide");
     }
 
     private static void HatShapes()

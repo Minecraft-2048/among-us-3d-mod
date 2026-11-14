@@ -97,8 +97,19 @@ namespace AmongUs3D
             public bool HatResolved;
             public HatMeshes Hat;
 
+            // visière et combinaison 3D
+            public IntPtr VisorKey, SkinKey;
+            public int VisorColor = int.MinValue, SkinColor = int.MinValue;
+            public bool VisorResolved, SkinResolved;
+            public HatMeshes Visor;
+            public SkinPaint Skin;
+
             // animal
             public bool BeingPet;
+            public PetModel PetModel;
+            public IntPtr PetKey;
+            public bool PetResolved;
+            public HatMeshes PetMesh;
         }
 
         private readonly Dictionary<IntPtr, Entity> _entities = new Dictionary<IntPtr, Entity>();
@@ -110,13 +121,13 @@ namespace AmongUs3D
         private readonly HashSet<IntPtr> _seenWorld = new HashSet<IntPtr>();
         private readonly List<Renderer> _hidden = new List<Renderer>();
         private readonly List<Part> _partSort = new List<Part>();
-        /// <summary>Chapeau 3D fabriqué une fois pour toutes (par chapeau et par couleur) : volume et contour noir.</summary>
-        private sealed class HatMeshes
-        {
-            public Mesh Solid, Outline;
-        }
-
+        // Accessoires 3D fabriqués une fois pour toutes : chapeau (par chapeau et couleur), visière, combinaison et animal
+        // (par dessin au repos et couleur).
         private readonly Dictionary<(IntPtr, int), HatMeshes> _hatCache = new Dictionary<(IntPtr, int), HatMeshes>();
+        private readonly Dictionary<(IntPtr, int), HatMeshes> _visorCache = new Dictionary<(IntPtr, int), HatMeshes>();
+        private readonly Dictionary<IntPtr, HatMeshes> _petCache = new Dictionary<IntPtr, HatMeshes>();
+        private readonly Dictionary<(IntPtr, int), SkinPaint> _skinCache = new Dictionary<(IntPtr, int), SkinPaint>();
+        private bool _accBroken;
         private readonly System.Random _rng = new System.Random();
 
         private Transform _parent;
@@ -193,6 +204,11 @@ namespace AmongUs3D
                 U.SafeDestroy(m.Outline);
             }
             _hatCache.Clear();
+            foreach (HatMeshes m in _visorCache.Values) m?.Destroy();
+            foreach (HatMeshes m in _petCache.Values) m?.Destroy();
+            _visorCache.Clear();
+            _petCache.Clear();
+            _skinCache.Clear();
             if (_capture != null)
             {
                 _capture.Destroy();
@@ -275,6 +291,8 @@ namespace AmongUs3D
             e.Model?.Destroy();
             e.GhostModel?.Destroy();
             e.Model = e.GhostModel = null;
+            e.PetModel?.Destroy();
+            e.PetModel = null;
             U.SafeDestroy(e.Root);
         }
 
@@ -583,6 +601,11 @@ namespace AmongUs3D
                 ResolveHat(e);
                 hat3D = e.Hat != null;
             }
+            // Visière, combinaison et animal en 3D (réglage Accessoires3D).
+            bool acc3D = use3D && !ghost && e.Kind == Kind.Player && ModConfig.Accessories3D.Value && !_captureBroken && !_accBroken;
+            bool pet3D = e.Kind == Kind.Pet && ModConfig.Accessories3D.Value && ModConfig.Characters3D.Value
+                         && !_kitBroken && !_captureBroken && !_accBroken;
+            bool petShown3D = pet3D && e.PetMesh != null;
 
             float height = (float.IsNaN(e.BodyHeight) ? _typicalHeight : e.BodyHeight)
                            * M.Clamp(ModConfig.CharacterScale.Value, 0.3f, 3f);
@@ -616,7 +639,7 @@ namespace AmongUs3D
                 // Morceaux remplacés par le modèle 3D : le corps, la combinaison et la visière d'un joueur,
                 // son chapeau quand il est en 3D, tout le dessin d'un cadavre.
                 // La main qui caresse et les cœurs d'un joueur sont dessinés sur le panneau de son animal.
-                bool replaced = (e.Kind == Kind.Player && p.Role == RolePetting)
+                bool replaced = (e.Kind == Kind.Player && p.Role == RolePetting) || (petShown3D && p.Role != RolePetting)
                                 || (use3D && (e.Kind == Kind.Body || p.Role == RoleBody || p.Role == RoleSkin || p.Role == RoleVisor
                                               || (hat3D && (p.Role == RoleHatFront || p.Role == RoleHatBack))));
 
@@ -690,6 +713,8 @@ namespace AmongUs3D
             // Chapeau 3D pas encore fabriqué : on le photographie maintenant (personnage immobile, au plus un par image).
             if (use3D && e.Kind == Kind.Player && !e.HatResolved && !running && ModConfig.Hats3D.Value && !_captureBroken)
                 BakeHat(e, ghost);
+            if (acc3D && !running) ResolveAccessories(e);
+            if (pet3D && main != null && e.Speed < 0.05f) ResolvePet(e, main);
 
             // Le sprite d'origine regarde-t-il vers la droite ?
             bool srcRight = true;
@@ -724,6 +749,11 @@ namespace AmongUs3D
             {
                 model.SetColor(e.ColorId);
                 if (e.Kind == Kind.Player) model.SetHat(hat3D ? e.Hat.Solid : null, hat3D ? e.Hat.Outline : null);
+                if (e.Kind == Kind.Player && !ghost)
+                {
+                    model.SetVisor(acc3D ? e.Visor?.Solid : null, acc3D ? e.Visor?.Outline : null);
+                    model.SetSkin(acc3D ? e.Skin : null);
+                }
                 float a = e.Alpha * (ghost ? M.Clamp(bodyAlpha, 0.2f, 0.6f) : bodyAlpha);
                 model.Update(g.x, g.y, height, e.FaceX, e.FaceY, running, f.DeltaTime, a);
                 model.Show(true);
@@ -735,6 +765,137 @@ namespace AmongUs3D
                 e.Model?.Show(false);
                 e.GhostModel?.Show(false);
             }
+
+            // ---- animal 3D
+            if (e.Kind == Kind.Pet)
+            {
+                if (petShown3D && (e.PetModel == null || !e.PetModel.Alive))
+                {
+                    e.PetModel?.Destroy();
+                    e.PetModel = NewPet();
+                }
+                if (petShown3D && e.PetModel != null)
+                {
+                    e.PetModel.SetMesh(e.PetMesh);
+                    e.PetModel.Update(g.x, g.y, e.FaceX, e.FaceY, e.Speed > 0.2f, f.DeltaTime, e.Alpha);
+                    e.PetModel.Show(true);
+                }
+                else
+                {
+                    e.PetModel?.Show(false);
+                }
+            }
+        }
+
+        private PetModel NewPet()
+        {
+            if (_kitBroken || _parent == null) return null;
+            try
+            {
+                if (_kit == null) _kit = CrewKit.Create();
+                return PetModel.Create(_kit, _parent, _layer);
+            }
+            catch (Exception ex)
+            {
+                _accBroken = true;
+                AmongUs3DPlugin.Logger.LogWarning("Animaux 3D indisponibles (retour aux images plates) : " + ex);
+                return null;
+            }
+        }
+
+        // ------------------------------------------------------------------ visière, combinaison et animal 3D
+
+        private HatCapture Capture() => _capture ?? (_capture = new HatCapture(_captureLayer));
+
+        /// <summary>
+        /// Visière et combinaison du personnage immobile : retrouvées dans le cache, sinon fabriquées
+        /// (une photo par image au plus, pour tous les personnages).
+        /// </summary>
+        private void ResolveAccessories(Entity e)
+        {
+            if (e.BodyPart == null || !e.BodyPart.Active) return;
+            Part visor = null, skin = null;
+            foreach (Part p in e.Parts)
+            {
+                if (!p.Active || p.SrcSprite == null) continue;
+                if (p.Role == RoleVisor) visor = p;
+                else if (p.Role == RoleSkin) skin = p;
+            }
+            try
+            {
+                IntPtr vk = Accessories.SpriteKey(visor?.SrcSprite);
+                if (vk != e.VisorKey || e.ColorId != e.VisorColor)
+                {
+                    e.VisorKey = vk; e.VisorColor = e.ColorId; e.VisorResolved = false; e.Visor = null;
+                }
+                if (!e.VisorResolved)
+                {
+                    if (vk == IntPtr.Zero) e.VisorResolved = true;
+                    else if (_visorCache.TryGetValue((vk, e.ColorId), out HatMeshes m)) { e.Visor = m; e.VisorResolved = true; }
+                    else if (_bakesThisFrame == 0)
+                    {
+                        _bakesThisFrame++;
+                        m = Accessories.Puff(Capture(), null, visor.SrcSprite, e.BodyPart.SrcSprite, e.BodyPart.ScaleX, float.NaN,
+                                             Accessories.VisorHalfThickness, "AU3D_Visiere");
+                        _visorCache[(vk, e.ColorId)] = m;
+                        e.Visor = m;
+                        e.VisorResolved = true;
+                    }
+                }
+
+                IntPtr sk = Accessories.SpriteKey(skin?.SrcSprite);
+                if (sk != e.SkinKey || e.ColorId != e.SkinColor)
+                {
+                    e.SkinKey = sk; e.SkinColor = e.ColorId; e.SkinResolved = false; e.Skin = null;
+                }
+                if (!e.SkinResolved)
+                {
+                    if (sk == IntPtr.Zero) e.SkinResolved = true;
+                    else if (_skinCache.TryGetValue((sk, e.ColorId), out SkinPaint paint)) { e.Skin = paint; e.SkinResolved = true; }
+                    else if (_bakesThisFrame == 0)
+                    {
+                        _bakesThisFrame++;
+                        paint = Accessories.PaintSkin(Capture(), skin.SrcSprite, e.BodyPart.SrcSprite, e.BodyPart.ScaleX);
+                        _skinCache[(sk, e.ColorId)] = paint;
+                        e.Skin = paint;
+                        e.SkinResolved = true;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _accBroken = true;
+                AmongUs3DPlugin.Logger.LogWarning("Visières et combinaisons 3D indisponibles : " + ex);
+            }
+        }
+
+        /// <summary>Animal immobile : son volume, retrouvé dans le cache ou fabriqué à partir de son dessin du moment.</summary>
+        private void ResolvePet(Entity e, Part main)
+        {
+            IntPtr key = Accessories.SpriteKey(main.SrcSprite);
+            if (key == IntPtr.Zero || (key == e.PetKey && e.PetResolved)) return;
+            if (key != e.PetKey) { e.PetKey = key; e.PetResolved = false; }
+            if (_petCache.TryGetValue(key, out HatMeshes m))
+            {
+                if (m != null) e.PetMesh = m;
+                e.PetResolved = true;
+                return;
+            }
+            if (_bakesThisFrame > 0) return;
+            _bakesThisFrame++;
+            try
+            {
+                m = Accessories.PuffPet(Capture(), main.SrcSprite, main.ScaleX);
+            }
+            catch (Exception ex)
+            {
+                _accBroken = true;
+                AmongUs3DPlugin.Logger.LogWarning("Animaux 3D indisponibles (retour aux images plates) : " + ex);
+                return;
+            }
+            _petCache[key] = m;
+            if (m != null) e.PetMesh = m; // sinon on garde le volume précédent
+            e.PetResolved = true;
         }
 
         // ------------------------------------------------------------------ chapeaux 3D
@@ -818,6 +979,7 @@ namespace AmongUs3D
             foreach (Part p in e.Parts) SetEnabled(p, false);
             e.Model?.Show(false);
             e.GhostModel?.Show(false);
+            e.PetModel?.Show(false);
         }
 
         private static void SetEnabled(Part p, bool on)
@@ -951,6 +1113,7 @@ namespace AmongUs3D
         {
             if (e.Model != null && e.Model.Shown) e.Model.SetOrder(baseOrder);
             if (e.GhostModel != null && e.GhostModel.Shown) e.GhostModel.SetOrder(baseOrder);
+            if (e.PetModel != null && e.PetModel.Shown) e.PetModel.SetOrder(baseOrder);
             _partSort.Clear();
             foreach (Part p in e.Parts)
             {

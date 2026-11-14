@@ -542,9 +542,41 @@ namespace AmongUs3D
             catch (Exception e) { Report("PlayerControl.cosmetics", e); return false; }
         }
         [MethodImpl(MethodImplOptions.NoInlining)]
-        private static void BodyInfoImpl(PlayerControl p, ref BodyInfo info)
+        private static void BodyInfoImpl(PlayerControl p, ref BodyInfo info) => CosmeticsInfoImpl(p.cosmetics, ref info);
+
+        /// <summary>Morceaux du dessin d'un personnage quelconque (par exemple l'aperçu de l'inventaire).</summary>
+        public static bool TryCosmeticsInfo(CosmeticsLayer c, out BodyInfo info)
         {
-            CosmeticsLayer c = p.cosmetics;
+            info = default;
+            try { CosmeticsInfoImpl(c, ref info); return info.Body != null; }
+            catch (Exception e) { Report("CosmeticsLayer", e); return false; }
+        }
+
+        /// <summary>Menu de personnalisation (inventaire) ouvert ? Donne alors son aperçu du personnage (peut être absent).</summary>
+        public static bool CustomizationMenuOpen(out CosmeticsLayer cosmetics, out Transform preview)
+        {
+            cosmetics = null;
+            preview = null;
+            try { return CustomizationMenuImpl(ref cosmetics, ref preview); }
+            catch (Exception e) { Report("PlayerCustomizationMenu", e); return false; }
+        }
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static bool CustomizationMenuImpl(ref CosmeticsLayer cosmetics, ref Transform preview)
+        {
+            PlayerCustomizationMenu menu = PlayerCustomizationMenu.Instance;
+            if (menu == null || !menu.gameObject.activeInHierarchy) return false;
+            PoolablePlayer pp = menu.PreviewArea;
+            if (pp != null)
+            {
+                cosmetics = pp.cosmetics;
+                preview = pp.transform;
+            }
+            return true;
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static void CosmeticsInfoImpl(CosmeticsLayer c, ref BodyInfo info)
+        {
             if (c == null) return;
             info.Normal = c.bodyType == PlayerBodyTypes.Normal;
             PlayerBodySprite s = c.currentBodySprite;

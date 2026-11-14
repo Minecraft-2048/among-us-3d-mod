@@ -25,7 +25,7 @@ namespace AmongUs3D
     /// la hauteur h au-dessus du point (x, y) du sol est dessiné en (x, y + h).
     /// Couleurs calculées par sommet (éclairage façon "lampe torche").
     /// </summary>
-    internal sealed class WallSystem
+    internal sealed partial class WallSystem
     {
         private sealed class WallMesh
         {
@@ -38,6 +38,7 @@ namespace AmongUs3D
             public float MinX, MinY, MaxX, MaxY;
             public bool Dynamic, Visible = true, Dark, Scan;
             public float R, G, B;
+            public float[] CR, CG, CB; // couleur propre de chaque sommet (meubles 3D), sinon R, G, B
             // Maillages texturés par la carte 2D : coordonnées "art" de chaque sommet.
             public float[] ArtX, ArtY;
             public Il2CppStructArray<Vector2> Uvs;
@@ -56,10 +57,11 @@ namespace AmongUs3D
             public readonly List<float> X = new List<float>(), Y = new List<float>(), Z = new List<float>();
             public readonly List<float> Shade = new List<float>(), ArtX = new List<float>(), ArtY = new List<float>();
             public readonly List<int> Tris = new List<int>();
+            public readonly List<uint> Rgb = new List<uint>(); // facultatif : couleur de chaque sommet (0xRRGGBB)
 
             public void Clear()
             {
-                X.Clear(); Y.Clear(); Z.Clear(); Shade.Clear(); ArtX.Clear(); ArtY.Clear(); Tris.Clear();
+                X.Clear(); Y.Clear(); Z.Clear(); Shade.Clear(); ArtX.Clear(); ArtY.Clear(); Tris.Clear(); Rgb.Clear();
             }
 
             public int Vertex(float x, float y, float z, float shade, float artX, float artY)
@@ -182,6 +184,7 @@ namespace AmongUs3D
             if (obstacleMask != 0)
             {
                 bool raise = ModConfig.RaiseWallArt.Value && floorMaterial != null;
+                if (raise && ModConfig.Decor3D.Value) FindPropHints(mapRoot);
                 if (raise)
                     detail = BuildSolids(colliders, obstacleMask, kind, wallH, obstacleH, wallColor, obstacleColor, layer);
                 else
@@ -673,13 +676,17 @@ namespace AmongUs3D
 
             // ---- maillages
             int tallCount = 0, faceCount = 0, lowCount = 0, furniture = 0;
+            bool props = ModConfig.Decor3D.Value;
+            _propCounts.Clear();
+            _emergencySolid = props && solids.Exists(x => x.Furniture && NameOf(x).IndexOf("emergency", StringComparison.OrdinalIgnoreCase) >= 0);
             var runX = new List<float>();
             var runY = new List<float>();
             foreach (Solid s in solids)
             {
                 if (s.Furniture)
                 {
-                    if (obstacleH > 0.01f && BuildFurniture(s, obstacleH, obstacleColor, layer)) furniture++;
+                    if (obstacleH > 0.01f && (props ? BuildProp(s, kind, obstacleH, obstacleColor, layer)
+                                                    : BuildFurniture(s, obstacleH, obstacleColor, layer))) furniture++;
                     continue;
                 }
 
@@ -733,7 +740,7 @@ namespace AmongUs3D
             }
 
             return $"{tallCount} murs physiques, {faceCount} faces redressées (hauteur type {defaultFace:0.00}), " +
-                   $"{lowCount + lowObstacles} murets, {furniture} meubles";
+                   $"{lowCount + lowObstacles} murets, {furniture} meubles" + PropSummary();
         }
 
         private static void PieceEnds(Edge e, int k, out float x0, out float y0, out float x1, out float y1)
@@ -919,6 +926,15 @@ namespace AmongUs3D
                 MinX = minX, MinY = minY, MaxX = maxX, MaxY = maxY,
                 R = color.r, G = color.g, B = color.b,
             };
+            if (!textured && b.Rgb.Count == n)
+            {
+                wm.CR = new float[n]; wm.CG = new float[n]; wm.CB = new float[n];
+                for (int i = 0; i < n; i++)
+                {
+                    uint c32 = b.Rgb[i];
+                    wm.CR[i] = ((c32 >> 16) & 0xFF) / 255f; wm.CG[i] = ((c32 >> 8) & 0xFF) / 255f; wm.CB[i] = (c32 & 0xFF) / 255f;
+                }
+            }
             if (textured)
             {
                 wm.ArtX = b.ArtX.ToArray();
@@ -1027,11 +1043,13 @@ namespace AmongUs3D
                     continue;
                 }
                 m.Dark = false;
+                bool own = m.CR != null;
                 for (int i = 0; i < m.VertexCount; i++)
                 {
                     float dx = m.X[i] - v.Cx, dy = m.Y[i] - v.Cy;
                     float b = M.VisionBrightness(MathF.Sqrt(dx * dx + dy * dy), v.Radius, v.Full, v.Ambient, v.FadeStart, v.FadeEnd) * m.Shade[i];
-                    m.Colors[i] = U.C32(U.ToByte(m.R * b), U.ToByte(m.G * b), U.ToByte(m.B * b));
+                    m.Colors[i] = own ? U.C32(U.ToByte(m.CR[i] * b), U.ToByte(m.CG[i] * b), U.ToByte(m.CB[i] * b))
+                                      : U.C32(U.ToByte(m.R * b), U.ToByte(m.G * b), U.ToByte(m.B * b));
                 }
                 m.Mesh.colors32 = m.Colors;
             }

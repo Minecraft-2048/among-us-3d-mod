@@ -32,10 +32,11 @@ Les autres joueurs n'ont **pas** besoin du mod et ne voient aucune différence.
 | **Caméra** | Première personne (ou troisième personne avec F6). La souris tourne la caméra, haut/bas compris. En troisième personne, elle tourne autour du personnage : regarder vers le bas la fait monter, comme dans Minecraft. |
 | **Déplacements** | Relatifs à la caméra : avancer, reculer, pas de côté. La vitesse et les collisions restent celles du jeu. |
 | **Murs** | Construits là où le personnage bute réellement. Leur dessin d'origine (fenêtres, consoles de tâches, portes, sièges…) est **redressé à la verticale**. Les portes apparaissent quand elles se ferment. |
-| **Meubles** | Tables, caisses, fauteuils… deviennent des blocs en volume avec leur dessus dessiné. |
+| **Meubles** | De **vrais objets modelés en 3D**, comme dans Blender : tables rondes à pied central entourées de bancs, bouton d'urgence en dôme rouge, consoles inclinées, caisses à cadre, lits, chaises de bureau. Les meubles non reconnus gardent leur forme, avec des arêtes arrondies et une plinthe. Le dessus et les faces avant restent peints avec le dessin du jeu. |
 | **Sol** | La carte 2D d'origine (bouches d'aération, surbrillances, décor) est plaquée au sol, mise à jour en direct. |
 | **Personnages** | Vrais modèles 3D aux couleurs du joueur : corps, visière, sac à dos, jambes qui marchent, contour noir. Les cadavres aussi (demi-corps et os). Le nom reste affiché au-dessus. Animaux et animations spéciales (échelle, bouche d'aération…) restent des images tournées vers la caméra. |
-| **Chapeaux** | Ils deviennent des **objets en volume** posés sur la tête, fabriqués à partir de leur dessin : de côté on retrouve le dessin du jeu, de face et de trois quarts le chapeau a une vraie épaisseur arrondie, avec un contour noir. |
+| **Chapeaux et accessoires** | Ils deviennent des **objets en volume**, fabriqués à partir de leur dessin : le chapeau posé sur la tête, la **visière** sur l'avant du visage, l'**animal** qui te suit (il se tourne dans le sens de la marche et sautille). De côté on retrouve le dessin du jeu, de face et de trois quarts ils ont une vraie épaisseur arrondie, avec un contour noir. La **combinaison** est peinte sur le corps et les jambes 3D. |
+| **Inventaire** | Dans le menu Inventaire, ton personnage est montré **en 3D** (avec chapeau, visière et combinaison) et tourne doucement sur lui-même. **F5** repasse l'aperçu en 2D (et inversement). |
 | **Fantômes** | Quand tu meurs, la vue **reste en 3D** et tu deviens un **fantôme 3D** transparent qui flotte, avec une queue à la place des jambes (ton chapeau aussi). Les autres fantômes sont en 3D de la même façon. |
 | **Animaux** | Quand tu caresses ton animal, la main et les cœurs s'affichent **sur l'animal**. En 1re personne, la caméra recule un peu et se tourne vers lui le temps de l'animation. |
 | **Touches sur les boutons** | En petit, en bas de chaque bouton du jeu (Tuer, Sabotage, Conduit, Signaler, Utiliser, Capacité, Caresser, Carte…), la touche du clavier qui fait la même chose, lue dans tes réglages de touches d'Among Us. |
@@ -59,7 +60,7 @@ Les touches de déplacement sont celles du jeu (ZQSD / WASD / flèches, selon te
 | Libérer le curseur pour cliquer sur l'interface | **Alt gauche maintenu** |
 | Caméra à la souris oui / non | **F8** (sans la souris : gauche / droite tournent la caméra) |
 | Sensibilité de la caméra − / + | **F10** / **F11** |
-| 3D / 2D | **F5** |
+| 3D / 2D | **F5** (dans l'inventaire : aperçu du personnage en 3D / 2D) |
 | 1re / 3e personne | **F6** |
 | Mini-carte | **F7** |
 | Capture d'écran (dossier `BepInEx/AmongUs3D-captures`) | **F12** |
@@ -117,11 +118,14 @@ Ouvre-le avec un éditeur de texte (jeu fermé). Les plus utiles :
 | `ChampDeVision` / `HauteurDesYeux` | `70` / `0.55` | Caméra à la première personne. |
 | `Personnages3D` / `TaillePersonnages3D` | `true` / `1` | Modèles 3D des joueurs ; `false` = images plates. |
 | `Chapeaux3D` | `true` | Chapeaux en volume ; `false` = chapeaux plats tournés vers la caméra. |
+| `Accessoires3D` | `true` | Visière, combinaison et animal en 3D ; `false` = visière et combinaison masquées sur les modèles 3D, animal en image plate. |
+| `Inventaire3D` | `true` | Aperçu 3D du personnage dans l'inventaire (F5 le change aussi). |
 | `Fantomes3D` | `true` | Fantômes en 3D ; `false` = images plates. |
 | `TouchesSurLesBoutons` | `true` | Touches du clavier écrites sur les boutons du jeu. |
 | `RegarderLAnimalCaresse` | `true` | En 1re personne, la caméra se tourne vers l'animal pendant la caresse. |
 | `Fleches3D` | `true` | Flèches de sabotage orientées selon la caméra ; `false` = flèches de la vue de dessus. |
 | `MursDebout` | `true` | Dessin des murs redressé ; `false` = ancien rendu à plat. |
+| `Decor3D` | `true` | Meubles modelés en 3D ; `false` = anciens blocs extrudés. |
 | `MursExterieurs` | `Auto` | Murs aux limites de la carte (cartes d'intérieur seulement en `Auto`). |
 | `HauteurDesMurs` / `HauteurDesObstacles` | `2` / `0.3` | Hauteur des murs et des meubles. |
 | `DistanceDeVueDuSol` / `ResolutionDuSol` | `14` / auto | Zone et finesse du décor (à baisser si le jeu rame). |
@@ -140,15 +144,17 @@ Le journal est **`BepInEx/LogOutput.log`**. **F9** y écrit un diagnostic comple
 | Des murs bizarres sur une carte | `MursDebout = false` pour revenir au rendu simple, puis envoie le journal. |
 | Les personnages 3D ne te plaisent pas | `Personnages3D = false`. |
 | Un chapeau 3D a une forme bizarre | `Chapeaux3D = false` remet les chapeaux plats. |
+| Un meuble 3D a une forme bizarre | `Decor3D = false` remet les blocs simples. |
 | Le jeu rame | `ResolutionDuSol = 1024`, `DistanceDeVueDuSol = 10`, `MiniCarteAuDemarrage = false`. |
 | « Trop d'erreurs : vue 3D désactivée » | Le mod s'est mis en sécurité : envoie `LogOutput.log`. |
 
 ## Limites connues
 
 - Les décors d'Among Us sont des dessins 2D : de très près, le dessin redressé des murs est flou.
-- Skins et visières cosmétiques ne sont pas affichés sur les modèles 3D (le chapeau, oui).
+- La combinaison est peinte sur le corps 3D d'après son dessin de profil : ses petits détails sont simplifiés.
+- Dans l'inventaire, l'animal reste en 2D à côté du personnage 3D.
 - Un chapeau 3D est fabriqué à partir de son dessin vu de côté : de face, son épaisseur est devinée (arrondie).
-  Un chapeau animé reste figé sur une image.
+  Un chapeau ou une visière animés restent figés sur une image.
 - Pas de plafond : au-dessus des murs, c'est la couleur de fond.
 - Les murs ne suivent pas les plateformes mobiles (The Airship).
 
