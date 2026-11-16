@@ -29,14 +29,17 @@ Les autres joueurs n'ont **pas** besoin du mod et ne voient aucune différence.
 
 | Élément | En 3D |
 |---|---|
-| **Caméra** | Première personne (ou troisième personne avec F6). La souris tourne la caméra, haut/bas compris. En troisième personne, elle tourne autour du personnage : regarder vers le bas la fait monter, comme dans Minecraft. |
+| **Caméra** | Première personne (ou troisième personne avec F6). La souris tourne la caméra, haut/bas compris. En troisième personne, elle tourne autour du personnage : regarder vers le bas la fait monter, comme dans Minecraft. Elle **ne traverse jamais les murs** ni le plafond : contre une cloison, elle se rapproche du personnage, qui s'efface s'il bouche la vue. La **molette** la rapproche ou l'éloigne ; tout près, on passe en première personne. |
 | **Déplacements** | Relatifs à la caméra : avancer, reculer, pas de côté. La vitesse et les collisions restent celles du jeu. |
-| **Murs** | Construits là où le personnage bute réellement. Leur dessin d'origine (fenêtres, consoles de tâches, portes, sièges…) est **redressé à la verticale**. Les portes apparaissent quand elles se ferment. Les murs sont **complets** : les trous dans un mur droit et les côtés de salle dont la cloison est en retrait sont refermés à pleine hauteur. |
-| **Meubles** | De **vrais objets modelés en 3D**, comme dans Blender : tables rondes à pied central entourées de bancs, bouton d'urgence en dôme rouge, consoles inclinées, caisses à cadre, lits (même collés à une cloison), chaises de bureau. Les meubles non reconnus gardent leur forme, avec des arêtes arrondies et une plinthe, y compris les objets adossés à un mur (cœur du réacteur, pupitre de la sécurité…). Le dessus et les faces avant restent peints avec le dessin du jeu. |
+| **Murs** | Construits là où le personnage bute réellement. Leur dessin d'origine (fenêtres, consoles de tâches, portes, sièges…) est **redressé à la verticale**. Les portes apparaissent quand elles se ferment. Les murs sont **complets** : les trous dans un mur droit et les côtés de salle dont la cloison est en retrait sont refermés à pleine hauteur, et de petits raccords ferment les fentes entre deux murs voisins. |
+| **Portes** | Une porte fermée est **debout** dans son encadrement, avec son dessin (portes de sabotage, portes de décontamination de MIRA HQ et de Polus…). Elle s'efface quand elle s'ouvre. |
+| **Plafond** | Sur les cartes d'intérieur, un plafond à dalles et à luminaires ferme les salles. Il s'efface quand la caméra de la 3e personne monte au-dessus des murs. |
+| **Meubles** | De **vrais objets modelés en 3D**, comme dans Blender : tables rondes à pied central entourées de bancs, bouton d'urgence en dôme rouge, consoles inclinées, caisses à cadre, lits (même collés à une cloison), chaises de bureau. Les meubles non reconnus gardent leur forme, avec des arêtes arrondies et une plinthe, y compris les objets adossés à un mur (cœur du réacteur, pupitre de la sécurité…). Les **meubles hauts** (distributeurs de MIRA HQ, armoires, machines) ont leur vraie hauteur, et leur dessin se plaque sur leur façade sans déformation. Le dessus et les faces avant restent peints avec le dessin du jeu. |
 | **Sol** | La carte 2D d'origine (bouches d'aération, surbrillances, décor) est plaquée au sol, mise à jour en direct. |
-| **Personnages** | Vrais modèles 3D aux couleurs du joueur : corps, visière, sac à dos, jambes qui marchent, contour noir. Les cadavres aussi (demi-corps et os). Le nom reste affiché au-dessus. |
+| **Relief** | Sur **The Fungle**, le terrain a de vrais niveaux : les hauteurs que l'on atteint par les échelles sont au-dessus de la jungle, la falaise monte (en pente raide), et la caméra s'élève quand on grimpe. |
+| **Personnages** | Vrais modèles 3D aux couleurs du joueur : corps, visière, sac à dos, jambes qui marchent, contour noir. Les cadavres aussi (demi-corps et os). Le nom reste affiché au-dessus. Une petite ombre ronde les pose sur le sol. |
 | **Animations** | Elles sont jouées **en 3D**. Quand un joueur est tué, son corps **tombe à plat** sur le sol, dans la direction où il regardait, avec un petit rebond. Tué par la **Vipère**, le corps s'affaisse, verdit et **se dissout** dans une flaque d'acide, au rythme du jeu. Les joueurs **sautent dans les bouches d'aération** et en ressortent, grimpent aux échelles dos à toi, et apparaissent en grandissant. |
-| **Chapeaux et accessoires** | Ils deviennent des **objets en volume**, fabriqués à partir de leur dessin : le chapeau posé sur la tête, la **visière** sur l'avant du visage, l'**animal** qui te suit (il se tourne dans le sens de la marche et sautille). De côté on retrouve le dessin du jeu, de face et de trois quarts ils ont une vraie épaisseur arrondie, avec un contour noir. La **combinaison** est peinte sur le corps et les jambes 3D. |
+| **Chapeaux et accessoires** | Ils deviennent des **objets en volume**, fabriqués à partir de leur dessin : le chapeau sur la tête, la **visière** sur l'avant du visage, l'**animal** qui te suit (il se tourne dans le sens de la marche et sautille). Les chapeaux qui entourent la tête (casquettes, bonnets, couronnes, capuches, perruques, hauts-de-forme, même penchés) l'**épousent comme une vraie coiffe**, fermée sur le dessus, et les pointes d'une couronne se répartissent tout autour ; ce qui dépasse (visière de casquette, cornes, oreilles) et les objets posés sur la tête (gâteau, étoile, ballon) sont arrondis, sans devenir des plaques. De côté on retrouve le dessin du jeu, avec un contour noir. La **combinaison** est peinte sur le corps et les jambes 3D. Les parties fines des animaux (oreilles, queues, antennes) restent rondes. Tous les objets du magasin ont été vérifiés un par un. |
 | **Inventaire** | Dans le menu Inventaire, ton personnage est montré **en 3D** (avec chapeau, visière et combinaison) et tourne doucement sur lui-même. **F5** repasse l'aperçu en 2D (et inversement). |
 | **Fantômes** | Quand tu meurs, la vue **reste en 3D** et tu deviens un **fantôme 3D** transparent qui flotte, avec une queue à la place des jambes (ton chapeau aussi). Les autres fantômes sont en 3D de la même façon. |
 | **Animaux** | Quand tu caresses ton animal, la main et les cœurs s'affichent **sur l'animal**. En 1re personne, la caméra recule un peu et se tourne vers lui le temps de l'animation. |
@@ -45,7 +48,10 @@ Les autres joueurs n'ont **pas** besoin du mod et ne voient aucune différence.
 | **Interface** | Le HUD du jeu (Utiliser, Signaler, Tuer, tâches, carte, chat) reste affiché par-dessus la 3D. |
 | **Flèches de sabotage** | Elles suivent la caméra : posées juste au-dessus de l'endroit visé quand il est devant toi, sinon en boussole autour du centre de l'écran (en haut = devant, à droite = à droite, en bas = derrière). |
 | **Mini-carte** | Une petite copie de la vue 2D normale, avec une flèche qui indique où tu regardes. |
-| **Retour en 2D automatique** | Dans les **bouches d'aération** (pour cliquer sur les flèches), pendant les réunions, les éjections, l'intro et les mini-jeux (tâches, caméras, ordinateur…). Le curseur revient tout seul. |
+| **Tâches** | La fenêtre d'une tâche ou d'un mini-jeu (caméras, ordinateur…) s'affiche en 2D **par-dessus la vue 3D**, qui reste en arrière-plan. Le curseur revient tout seul. |
+| **Bouches d'aération** | Dans un conduit, la vue reste en 3D : la caméra se place au-dessus de la grille, comme à la 3e personne, et des **flèches posées sur le sol** mènent aux conduits voisins (clic dessus). |
+| **Fantôme qui suit un joueur** | Quand un fantôme « hante » un joueur, la vue reste en 3D, caméra derrière le joueur suivi. |
+| **Retour en 2D automatique** | Seulement pour les écrans pleins : réunions, éjections et intro. |
 
 ---
 
@@ -57,16 +63,20 @@ Les touches de déplacement sont celles du jeu (ZQSD / WASD / flèches, selon te
 |---|---|
 | Regarder autour de soi | **Souris** (curseur caché, comme dans Minecraft) |
 | Avancer / reculer / pas de côté | Touches de déplacement du jeu |
-| Utiliser (tâche, bouton, **bouche d'aération**, caresser) | **Clic gauche**, ou la touche habituelle du jeu |
+| Utiliser (tâche, bouton, **bouche d'aération**) | **Clic gauche**, ou la touche habituelle du jeu. Le clic ne caresse jamais l'animal : c'est la touche du jeu qui le fait |
+| Ouvrir le chat (quand il est disponible) | **T** |
+| Ouvrir les paramètres du jeu | **Échap** |
+| Dans un conduit : changer de conduit / tourner la vue | **Clic** sur une flèche du sol / **clic droit maintenu** |
 | Libérer le curseur pour cliquer sur l'interface | **Alt gauche maintenu** |
 | Caméra à la souris oui / non | **F8** (sans la souris : gauche / droite tournent la caméra) |
 | Sensibilité de la caméra − / + | **F10** / **F11** |
 | 3D / 2D | **F5** (dans l'inventaire : aperçu du personnage en 3D / 2D) |
 | 1re / 3e personne | **F6** |
+| Rapprocher / éloigner la caméra de la 3e personne | **Molette** (tout près = 1re personne ; depuis la 1re personne, molette vers soi = 3e personne) |
 | Mini-carte | **F7** |
 | Capture d'écran (dossier `BepInEx/AmongUs3D-captures`) | **F12** |
 | Diagnostic dans le journal | **F9** |
-| Tuer, Sabotage, Signaler, Carte… | Touches habituelles du jeu, **écrites en petit sur chaque bouton** (par défaut Q, Tab, R, Tab…) |
+| Tuer, Sabotage, Signaler, Carte… | Touches habituelles du jeu, **écrites en petit sur chaque bouton** (sur un clavier français : A, Tab, R, Tab…) |
 
 Le curseur est rendu automatiquement dès qu'un menu, une tâche, le chat ou la carte est ouvert.
 
@@ -97,8 +107,14 @@ Pour désinstaller : supprime `BepInEx/plugins/AmongUs3D.dll`.
   complété ; un mannequin tué dont le corps bascule et finit couché à plat ; en Vipère, le corps qui se dissout
   dans sa flaque en 15 secondes environ ; le saut dans une bouche d'aération et la sortie (vus à la 3e personne
   avec `Vue2DDansLesBouches = false`) ; la touche [A] affichée sur « Tuer » avec un clavier français.
+  Version 1.4, en Entraînement : la caméra de la 3e personne dos à un mur (elle ne le traverse plus) et le zoom à la
+  molette jusqu'à la 1re personne ; tout le magasin rendu en 3D et vérifié un par un (outil de catalogue du mode test,
+  dans l'inventaire) : 583 chapeaux, 184 visières, 214 combinaisons et 51 animaux ; sur MIRA HQ, les portes de décontamination debout puis ouvertes, les distributeurs
+  en meubles hauts, le plafond, une tâche en 2D sur fond 3D, la vue 3D d'un conduit et le clic sur ses flèches,
+  T (chat) et Échap (paramètres) ; sur The Fungle, la falaise en hauteur vue d'en bas et d'en haut.
 - **Pas encore essayé** : MIRA HQ, Polus, The Airship (le mod s'y construit de la même façon, mais attends-toi à
-  des défauts d'affichage) et les versions Steam / Epic. Pour la version 1.3 : les échelles et
+  des défauts d'affichage) et les versions Steam / Epic. Pour la version 1.4 : le fantôme qui suit un joueur (il faut une vraie
+  partie), la montée d'une échelle de The Fungle, Polus et The Airship. Pour la version 1.3 : les échelles et
   l'apparition (il n'y a pas d'échelle sur The Skeld), le saut d'un autre joueur dans une bouche (essayé seulement
   avec son propre personnage), les murs complétés des autres cartes.
 - **Android (Starlight)** : le code est prévu pour (commandes tactiles, boutons à l'écran), mais il n'a jamais
@@ -123,6 +139,7 @@ Ouvre-le avec un éditeur de texte (jeu fermé). Les plus utiles :
 | `InclinaisonMax` | `60` | Angle maximal pour regarder vers le haut ou le bas. |
 | `RotationParPas` | `0` | `90` = un quart de tour par appui (souris libre). |
 | `ChampDeVision` / `HauteurDesYeux` | `70` / `0.55` | Caméra à la première personne. |
+| `ZoomALaMolette` / `ZoomTroisiemePersonne` | `true` / `1` | La molette règle l'éloignement de la caméra de la 3e personne ; la dernière valeur choisie est retenue (de `0.4` à `2.6`). |
 | `Personnages3D` / `TaillePersonnages3D` | `true` / `1` | Modèles 3D des joueurs ; `false` = images plates. |
 | `Chapeaux3D` | `true` | Chapeaux en volume ; `false` = chapeaux plats tournés vers la caméra. |
 | `Accessoires3D` | `true` | Visière, combinaison et animal en 3D ; `false` = visière et combinaison masquées sur les modèles 3D, animal en image plate. |
@@ -133,13 +150,20 @@ Ouvre-le avec un éditeur de texte (jeu fermé). Les plus utiles :
 | `Fleches3D` | `true` | Flèches de sabotage orientées selon la caméra ; `false` = flèches de la vue de dessus. |
 | `MursDebout` | `true` | Dessin des murs redressé ; `false` = ancien rendu à plat. |
 | `Decor3D` | `true` | Meubles modelés en 3D ; `false` = anciens blocs extrudés. |
-| `MursComplets` | `true` | Murs restés bas complétés à pleine hauteur, objets adossés aux murs en volume ; `false` = rendu de la version 1.2. |
+| `MursComplets` | `true` | Murs restés bas complétés à pleine hauteur (cartes d'intérieur), raccords entre murs, objets adossés aux murs en volume ; `false` = rendu de la version 1.2. |
+| `Plafond` | `Auto` | Plafond sur les cartes d'intérieur ; `Never` = pas de plafond. |
+| `VraieHauteurDesMeubles` | `true` | Meubles hauts à leur vraie hauteur ; `false` = meubles bas de la version 1.3. |
+| `Relief` | `true` | Niveaux du terrain sur The Fungle ; `false` = carte plate. |
+| `AntiCrenelage` | `4` | Lissage des bords de la 3D (0, 2, 4 ou 8) ; à baisser si le jeu rame. |
+| `OmbresAuSol` | `true` | Ombre ronde sous les personnages. |
+| `TachesSurFond3D` | `true` | Tâches en 2D sur fond 3D ; `false` = toute la vue repasse en 2D. |
+| `OuvrirLeChat` / `OuvrirLesParametres` | `T` / `Escape` | Touches du chat et des paramètres en vue 3D (`None` = désactivé). |
 | `Animations3D` | `true` | Chute des corps, dissolution par la Vipère, bouches d'aération, échelles et apparition en 3D ; `false` = cadavre debout, images plates pendant ces animations. |
 | `MursExterieurs` | `Auto` | Murs aux limites de la carte (cartes d'intérieur seulement en `Auto`). |
 | `HauteurDesMurs` / `HauteurDesObstacles` | `2` / `0.3` | Hauteur des murs et des meubles. |
 | `DistanceDeVueDuSol` / `ResolutionDuSol` | `14` / auto | Zone et finesse du décor (à baisser si le jeu rame). |
 | `SimulerLaVision` / `LumiereDansLObscurite` | `true` / `0.16` | Vision du jeu et luminosité hors vision. |
-| `Vue2DDansLesBouches` | `true` | Retour en 2D dans les bouches d'aération. |
+| `Vue2DDansLesBouches` | `false` | `true` = retour en 2D dans les bouches d'aération (ancien comportement). |
 | `MiniCarteAuDemarrage` / `TailleMiniCarte` | `true` / `0.28` | Mini-carte. |
 
 ## Dépannage
@@ -154,7 +178,8 @@ Le journal est **`BepInEx/LogOutput.log`**. **F9** y écrit un diagnostic comple
 | Les personnages 3D ne te plaisent pas | `Personnages3D = false`. |
 | Un chapeau 3D a une forme bizarre | `Chapeaux3D = false` remet les chapeaux plats. |
 | Un meuble 3D a une forme bizarre | `Decor3D = false` remet les blocs simples. |
-| Le jeu rame | `ResolutionDuSol = 1024`, `DistanceDeVueDuSol = 10`, `MiniCarteAuDemarrage = false`. |
+| Le jeu rame | `AntiCrenelage = 0`, `ResolutionDuSol = 1024`, `DistanceDeVueDuSol = 10`, `MiniCarteAuDemarrage = false`. |
+| The Fungle a l'air bizarre | `Relief = false` remet la carte à plat. |
 | « Trop d'erreurs : vue 3D désactivée » | Le mod s'est mis en sécurité : envoie `LogOutput.log`. |
 
 ## Limites connues
@@ -164,7 +189,8 @@ Le journal est **`BepInEx/LogOutput.log`**. **F9** y écrit un diagnostic comple
 - Dans l'inventaire, l'animal reste en 2D à côté du personnage 3D.
 - Un chapeau 3D est fabriqué à partir de son dessin vu de côté : de face, son épaisseur est devinée (arrondie).
   Un chapeau ou une visière animés restent figés sur une image.
-- Pas de plafond : au-dessus des murs, c'est la couleur de fond.
+- Pas de plafond en plein air (Polus, The Fungle) : au-dessus des murs, c'est la couleur de fond.
+- The Fungle : la falaise est une pente raide sur laquelle son dessin est étiré, pas encore une paroi verticale.
 - Les murs ne suivent pas les plateformes mobiles (The Airship).
 
 ---
@@ -200,6 +226,7 @@ dotnet run --project tests/AmongUs3D.Tests.csproj -c Release
 | `src/Rig.cs` | Caméras : 3D, sol (carte vue de dessus), interface, mini-carte |
 | `src/WallSystem.cs` | Collisions de la carte → murs, faces redressées, meubles, portes, éclairage |
 | `src/WallRules.cs` | Règles pures (testées) : côté praticable, murs à compléter, objets adossés |
+| `src/Terrain.cs` | Relief (testé) : zones praticables, niveaux déduits des échelles |
 | `src/ProxySystem.cs` | Joueurs, animaux, cadavres |
 | `src/CrewShape.cs`, `src/CrewModel.cs` | Forme et modèle 3D des personnages (vivants, cadavres, fantômes) |
 | `src/HatShape.cs`, `src/HatCapture.cs` | Chapeaux 3D : photo du dessin du chapeau, puis volume « gonflé » |

@@ -7,10 +7,11 @@
     <Nullable>disable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
     <DebugType>embedded</DebugType>
-    <Version>1.3.0</Version>
+    <Version>1.4.0</Version>
     <Description>Vue 3D à la première personne pour Among Us (Windows + Android/Starlight)</Description>
     <Authors>AmongUs3D</Authors>
-    <!-- Pas de P/Invoke ni de code unsafe : condition de validation de Starlight (Android). -->
+    <!-- Pas de code unsafe. Un seul appel natif, propre à Windows (KeyHints : disposition du clavier, via user32),
+         jamais exécuté ailleurs : le code vérifie d'abord qu'il tourne sur Windows. -->
     <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
     <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>

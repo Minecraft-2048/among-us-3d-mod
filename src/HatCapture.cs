@@ -11,7 +11,7 @@ namespace AmongUs3D
     /// </summary>
     internal sealed class HatCapture
     {
-        public const int Size = 48;
+        public const int Size = 96; // assez fin pour garder les détails du dessin (le jeu les dessine à peu près à cette taille)
 
         private readonly int _layer;
         private GameObject _camGo, _spriteRoot;

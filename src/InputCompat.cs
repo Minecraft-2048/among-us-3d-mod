@@ -51,6 +51,7 @@ namespace AmongUs3D
             _getMouseButtonUp = Static<Func<int, bool>>(input, "GetMouseButtonUp", typeof(int));
             _getAxisRaw = Static<Func<string, float>>(input, "GetAxisRaw", typeof(string));
             _mousePosition = Static<Func<Vector3>>(input, "get_mousePosition");
+            _mouseScroll = Static<Func<Vector2>>(input, "get_mouseScrollDelta");
             _touchCount = Static<Func<int>>(input, "get_touchCount");
             _getTouch = input.GetMethod("GetTouch", BindingFlags.Public | BindingFlags.Static, null, new[] { typeof(int) }, null);
 
@@ -91,6 +92,18 @@ namespace AmongUs3D
         {
             if (k == KeyCode.None || _getKey == null) return false;
             try { return _getKey(k); } catch { return false; }
+        }
+
+        private static Func<Vector2> _mouseScroll;
+
+        /// <summary>Molette de la souris pendant cette image : positif = vers l'avant.</summary>
+        public static float MouseScroll
+        {
+            get
+            {
+                if (_mouseScroll == null) return 0f;
+                try { return _mouseScroll().y; } catch { return 0f; }
+            }
         }
 
         public static bool MouseButton(int b)

@@ -45,6 +45,9 @@ namespace AmongUs3D
             MouseLook = !Platform.IsMobile && ModConfig.MouseLookAtStart.Value;
         }
 
+        /// <summary>Curseur libre mais vue 3D affichée (conduit...) : maintenir le clic droit tourne la caméra.</summary>
+        public bool AllowDragLook;
+
         public void ResetOrientation()
         {
             Yaw = 0f; _targetYaw = 0f; Pitch = 0f; _lastTurnSign = 0; _lookFinger = -1;
@@ -205,7 +208,7 @@ namespace AmongUs3D
 
             // Mode Minecraft : curseur verrouillé, la souris tourne toujours la caméra.
             // Sinon (ancien mode) : il faut maintenir le clic droit.
-            bool legacyDrag = !MouseLook && canMove && InputCompat.MouseButton(1);
+            bool legacyDrag = (AllowDragLook || (!MouseLook && canMove)) && InputCompat.MouseButton(1);
             if (!Captured && !legacyDrag)
             {
                 _hadMouse = false;

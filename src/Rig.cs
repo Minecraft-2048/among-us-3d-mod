@@ -29,11 +29,28 @@ namespace AmongUs3D
         private Material _floorMat;
         private Il2CppStructArray<Color32> _floorColors;
         private float[] _floorDist;
+        // relief : place de chaque sommet du sol autour de son centre, et sommets mis à jour quand le sol se déplace
+        private Il2CppStructArray<Vector3> _floorVerts;
+        private float _floorZx = float.NaN, _floorZy;
+        private bool _floorRaised;
         private float _lastRadius = -1f, _lastAmbient = -1f;
         private bool _lastFull;
         private GameObject _arrowGo;
         private Mesh _arrowMesh;
         private Material _arrowMat;
+        // plafond : grille calée sur son motif (dalles), éclairée comme le sol
+        private const float CeilTile = 4f;
+        private GameObject _ceilGo;
+        private Mesh _ceilMesh;
+        private Material _ceilMat;
+        private Texture2D _ceilTex;
+        private Il2CppStructArray<Color32> _ceilColors;
+        private float[] _ceilX, _ceilY;
+        private float _ceilHalf = -1f;
+        private int _previousAA = -1;
+        // flèches posées sur le sol autour du conduit où se trouve le joueur
+        private readonly System.Collections.Generic.List<GameObject> _ventArrows = new System.Collections.Generic.List<GameObject>();
+        private Mesh _ventArrowMesh;
         private MeshRenderer _swappedShadowQuad;
         private int _shadowQuadLayer = -1;
         private int _uiLayer = -2;
@@ -72,6 +89,18 @@ namespace AmongUs3D
             _cam3D.farClipPlane = 150f;
             _cam3D.clearFlags = CameraClearFlags.SolidColor;
             _cam3D.cullingMask = 1 << Layer3D;
+            // Lissage des bords (réglage AntiCrenelage) : l'écran entier passe en multi-échantillonnage.
+            int aa = ModConfig.AntiAliasing.Value;
+            if (aa == 2 || aa == 4 || aa == 8)
+            {
+                try
+                {
+                    _previousAA = QualitySettings.antiAliasing;
+                    if (_previousAA != aa) QualitySettings.antiAliasing = aa;
+                    _cam3D.allowMSAA = true;
+                }
+                catch (Exception e) { Safe.Report("QualitySettings.antiAliasing", e); }
+            }
 
             // ---- sol : caméra orthographique vers une texture
             bool mobile = Platform.IsMobile;
@@ -167,6 +196,10 @@ namespace AmongUs3D
             }
             _floorColors = new Il2CppStructArray<Color32>(n);
             for (int k = 0; k < n; k++) _floorColors[k] = U.C32(255, 255, 255);
+            _floorVerts = new Il2CppStructArray<Vector3>(n);
+            for (int k = 0; k < n; k++) _floorVerts[k] = verts[k];
+            _floorZx = float.NaN;
+            _floorRaised = false;
             _floorMesh.Clear();
             _floorMesh.vertices = verts;
             _floorMesh.uv = uvs;
@@ -217,6 +250,17 @@ namespace AmongUs3D
             U.SafeDestroy(_floorMat);
             U.SafeDestroy(_arrowMesh);
             U.SafeDestroy(_arrowMat);
+            U.SafeDestroy(_ventArrowMesh);
+            _ventArrows.Clear();
+            U.SafeDestroy(_ceilMesh);
+            U.SafeDestroy(_ceilMat);
+            U.SafeDestroy(_ceilTex);
+            _ceilGo = null;
+            if (_previousAA >= 0)
+            {
+                try { if (QualitySettings.antiAliasing != _previousAA) QualitySettings.antiAliasing = _previousAA; } catch { /* ignoré */ }
+                _previousAA = -1;
+            }
             Root = null;
         }
 
@@ -353,7 +397,7 @@ namespace AmongUs3D
         }
 
         /// <summary>Place la caméra du sol (alignée sur les texels pour éviter le scintillement) et le sol 3D.</summary>
-        public void UpdateFloor(float px, float py, in VisionParams v, int floorMask)
+        public void UpdateFloor(float px, float py, in VisionParams v, int floorMask, Terrain ground)
         {
             float half = M.Clamp(ModConfig.FloorViewDistance.Value, 6f, 40f);
             if (MathF.Abs(half - _floorHalf) > 0.01f) BuildFloorMesh(half, Platform.IsMobile ? 48 : 72);
@@ -379,6 +423,21 @@ namespace AmongUs3D
             FloorCenterX = cx;
             FloorCenterY = cy;
 
+            // Relief : chaque sommet du sol monte à la hauteur du terrain ("haut" = -Z).
+            bool raised = ground != null && ground.Active;
+            if ((raised || _floorRaised) && (cx != _floorZx || cy != _floorZy || raised != _floorRaised))
+            {
+                _floorZx = cx; _floorZy = cy; _floorRaised = raised;
+                for (int k = 0; k < _floorVerts.Length; k++)
+                {
+                    Vector3 p = _floorVerts[k];
+                    p.z = raised ? -ground.Height(cx + p.x, cy + p.y) : 0f;
+                    _floorVerts[k] = p;
+                }
+                _floorMesh.vertices = _floorVerts;
+                _floorMesh.RecalculateBounds();
+            }
+
             // Couleurs du sol : ne changent que si le rayon de vision change (sabotage, mort...).
             if (MathF.Abs(v.Radius - _lastRadius) > 0.01f || v.Full != _lastFull || MathF.Abs(v.Ambient - _lastAmbient) > 0.001f)
             {
@@ -393,6 +452,174 @@ namespace AmongUs3D
             }
         }
 
+        // ------------------------------------------------------------------ flèches du conduit
+
+        /// <summary>Flèche blanche bordée de noir, pointe vers +Y, posée à plat (le bord est juste en dessous).</summary>
+        private static Mesh BuildFloorArrowMesh()
+        {
+            var m = new Mesh { name = "AU3D_VentArrow" };
+            const float o = 1.32f; // bord noir : la même flèche, plus grande
+            m.vertices = new[]
+            {
+                U.V3(0f, 0.56f * o, 0f), U.V3(-0.36f * o, -0.36f * o, 0f), U.V3(0f, -0.10f * o - 0.04f, 0f), U.V3(0.36f * o, -0.36f * o, 0f),
+                U.V3(0f, 0.56f, -0.004f), U.V3(-0.36f, -0.36f, -0.004f), U.V3(0f, -0.10f, -0.004f), U.V3(0.36f, -0.36f, -0.004f),
+            };
+            Color32 dark = U.C32(20, 22, 28), white = U.C32(255, 255, 255), grey = U.C32(205, 214, 224);
+            m.colors32 = new[] { dark, dark, dark, dark, white, grey, white, grey };
+            m.triangles = new[] { 0, 2, 1, 0, 3, 2, 4, 6, 5, 4, 7, 6 };
+            m.RecalculateBounds();
+            return m;
+        }
+
+        /// <summary>
+        /// Dans un conduit : une flèche par conduit voisin, posée sur le sol à l'endroit de la flèche du jeu,
+        /// pointée du conduit vers l'extérieur. Liste vide ou null = aucune flèche.
+        /// </summary>
+        public void UpdateVentArrows(System.Collections.Generic.List<Vector2> at, float cx, float cy, float pulse, float groundHeight = 0f)
+        {
+            int n = at != null ? at.Count : 0;
+            if (n > 0 && _ventArrowMesh == null) _ventArrowMesh = BuildFloorArrowMesh();
+            while (_ventArrows.Count < n)
+            {
+                var go = new GameObject("AU3D_VentArrow");
+                go.layer = Layer3D;
+                go.transform.SetParent(Root.transform, false);
+                go.AddComponent<MeshFilter>().sharedMesh = _ventArrowMesh;
+                var r = go.AddComponent<MeshRenderer>();
+                r.sharedMaterial = _arrowMat;
+                r.sortingOrder = -29400; // sur le sol, sous les personnages
+                _ventArrows.Add(go);
+            }
+            for (int i = 0; i < _ventArrows.Count; i++)
+            {
+                GameObject go = _ventArrows[i];
+                if (!U.Alive(go)) continue;
+                bool on = i < n;
+                if (go.activeSelf != on) go.SetActive(on);
+                if (!on) continue;
+                Vector2 p = at[i];
+                float dx = p.x - cx, dy = p.y - cy;
+                float size = 0.42f * (1f + 0.08f * pulse);
+                go.transform.position = U.V3(p.x, p.y, -0.02f - groundHeight);
+                go.transform.rotation = U.RotationZ(-MathF.Atan2(dx, dy) / M.Deg2Rad);
+                go.transform.localScale = U.V3(size, size, 1f);
+            }
+        }
+
+        // ------------------------------------------------------------------ plafond
+
+        /// <summary>Motif du plafond : 2 x 2 dalles métalliques à joints sombres, dont une porte un luminaire.</summary>
+        private static Texture2D BuildCeilingTexture()
+        {
+            const int n = 128, t = 64;
+            var px = new Il2CppStructArray<Color32>(n * n);
+            for (int y = 0; y < n; y++)
+            for (int x = 0; x < n; x++)
+            {
+                int lx = x % t, ly = y % t, tile = x / t + 2 * (y / t);
+                int edge = Math.Min(Math.Min(lx, ly), Math.Min(t - 1 - lx, t - 1 - ly));
+                float k = edge < 1 ? 0.42f : (edge < 3 ? 1.14f : 1f);                 // joint sombre, biseau clair
+                k *= tile == 0 ? 1f : (tile == 1 ? 0.93f : (tile == 2 ? 0.97f : 1.04f)); // dalles légèrement différentes
+                float r = 0.30f * k, g = 0.33f * k, b = 0.39f * k;
+                if (tile == 0)
+                {
+                    float dx = MathF.Abs(lx - 31.5f), dy = MathF.Abs(ly - 31.5f);
+                    if (dx < 19f && dy < 6f) { r = 1f; g = 0.97f; b = 0.88f; }           // luminaire
+                    else if (dx < 22f && dy < 9f) { r = 0.16f; g = 0.18f; b = 0.21f; }   // son cadre
+                    else
+                    {
+                        // halo autour du luminaire
+                        float ex = MathF.Max(0f, dx - 22f), ey = MathF.Max(0f, dy - 9f);
+                        float glow = MathF.Max(0f, 1f - MathF.Sqrt(ex * ex + ey * ey) / 12f) * 0.28f;
+                        r += glow; g += glow * 0.97f; b += glow * 0.85f;
+                    }
+                }
+                px[y * n + x] = U.C32(U.ToByte(r), U.ToByte(g), U.ToByte(b));
+            }
+            var tex = new Texture2D(n, n, TextureFormat.RGBA32, true) { name = "AU3D_Plafond" };
+            tex.wrapMode = TextureWrapMode.Repeat;
+            tex.filterMode = FilterMode.Trilinear;
+            tex.anisoLevel = 8;
+            tex.SetPixels32(px);
+            tex.Apply(true, false);
+            return tex;
+        }
+
+        private void BuildCeiling(float half)
+        {
+            _ceilHalf = half;
+            if (_ceilTex == null) _ceilTex = BuildCeilingTexture();
+            if (_ceilMat == null) _ceilMat = new Material(SpriteShader) { name = "AU3D_CeilingMat", mainTexture = _ceilTex };
+            if (_ceilGo == null)
+            {
+                _ceilGo = new GameObject("AU3D_Ceiling");
+                _ceilGo.layer = Layer3D;
+                _ceilGo.transform.SetParent(Root.transform, false);
+                _ceilMesh = new Mesh { name = "AU3D_CeilingMesh" };
+                _ceilGo.AddComponent<MeshFilter>().sharedMesh = _ceilMesh;
+                var r = _ceilGo.AddComponent<MeshRenderer>();
+                r.sharedMaterial = _ceilMat;
+                r.sortingOrder = -29500; // après le sol, avant le dessin des murs et les personnages
+            }
+            // Le maillage se cale sur le motif (tous les CeilTile) : il déborde donc d'une période autour de la zone du sol.
+            const float cell = 1f;
+            int grid = 2 * (int)MathF.Ceiling((half + CeilTile) / cell);
+            float size = grid * cell * 0.5f;
+            int n = (grid + 1) * (grid + 1);
+            var verts = new Vector3[n];
+            var uvs = new Vector2[n];
+            _ceilX = new float[n];
+            _ceilY = new float[n];
+            for (int j = 0; j <= grid; j++)
+            for (int i = 0; i <= grid; i++)
+            {
+                int k = j * (grid + 1) + i;
+                float x = -size + i * cell, y = -size + j * cell;
+                verts[k] = U.V3(x, y, 0f);
+                uvs[k] = U.V2(x / CeilTile, y / CeilTile);
+                _ceilX[k] = x; _ceilY[k] = y;
+            }
+            var tris = new int[grid * grid * 6];
+            int t = 0;
+            for (int j = 0; j < grid; j++)
+            for (int i = 0; i < grid; i++)
+            {
+                int a = j * (grid + 1) + i, b = a + 1, c = a + grid + 1, d = c + 1;
+                tris[t++] = a; tris[t++] = b; tris[t++] = c;
+                tris[t++] = b; tris[t++] = d; tris[t++] = c;
+            }
+            _ceilColors = new Il2CppStructArray<Color32>(n);
+            _ceilMesh.Clear();
+            _ceilMesh.vertices = verts;
+            _ceilMesh.uv = uvs;
+            _ceilMesh.colors32 = _ceilColors;
+            _ceilMesh.triangles = tris;
+            _ceilMesh.RecalculateBounds();
+            _ceilMesh.MarkDynamic();
+        }
+
+        /// <summary>Plafond au-dessus des murs, éclairé comme le sol (sombre hors du rayon de vision).</summary>
+        public void UpdateCeiling(bool show, float px, float py, float height, in VisionParams v)
+        {
+            if (!show)
+            {
+                if (_ceilGo != null && _ceilGo.activeSelf) _ceilGo.SetActive(false);
+                return;
+            }
+            if (_ceilGo == null || MathF.Abs(_ceilHalf - _floorHalf) > 0.01f) BuildCeiling(_floorHalf);
+            if (!_ceilGo.activeSelf) _ceilGo.SetActive(true);
+            float cx = MathF.Round(px / CeilTile) * CeilTile, cy = MathF.Round(py / CeilTile) * CeilTile;
+            _ceilGo.transform.position = U.V3(cx, cy, -height);
+            float fadeStart = _floorHalf * 0.6f, fadeEnd = _floorHalf * 0.97f;
+            for (int k = 0; k < _ceilX.Length; k++)
+            {
+                float dx = _ceilX[k] + cx - px, dy = _ceilY[k] + cy - py;
+                byte c = U.ToByte(0.94f * M.VisionBrightness(MathF.Sqrt(dx * dx + dy * dy), v.Radius, v.Full, v.Ambient, fadeStart, fadeEnd));
+                _ceilColors[k] = U.C32(c, c, c);
+            }
+            _ceilMesh.colors32 = _ceilColors;
+        }
+
         /// <summary>Point du monde 3D vu par la caméra 3D : coordonnées écran (0..1), vrai s'il est devant la caméra.</summary>
         public bool Project(float x, float y, float z, out float vx, out float vy)
         {
@@ -400,6 +627,20 @@ namespace AmongUs3D
             vx = v.x;
             vy = v.y;
             return v.z > 0.3f;
+        }
+
+        /// <summary>Point du sol (z = 0) visé à l'écran (pixels) dans la vue 3D. Faux si le rayon ne touche pas le sol.</summary>
+        public bool ScreenToFloor(float sx, float sy, float groundHeight, out float x, out float y)
+        {
+            x = y = 0f;
+            Ray r = _cam3D.ScreenPointToRay(U.V3(sx, sy, 0f));
+            Vector3 o = r.origin, d = r.direction;
+            if (MathF.Abs(d.z) < 1e-5f) return false;
+            float t = (-groundHeight - o.z) / d.z;
+            if (t <= 0f) return false;
+            x = o.x + d.x * t;
+            y = o.y + d.y * t;
+            return true;
         }
 
         /// <summary>Cadre de l'interface (caméra 2D du jeu) : centre et demi-dimensions, en unités du monde.</summary>

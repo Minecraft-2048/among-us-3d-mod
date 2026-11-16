@@ -46,15 +46,41 @@ namespace AmongUs3D
             return made;
         }
 
+        /// <summary>
+        /// Photographie un ou deux calques posés sur le corps et donne le repère du modèle : Y du bord gauche
+        /// (<paramref name="y0"/>, largeur signée d'un pixel <paramref name="cellY"/>), Z du bord bas.
+        /// </summary>
+        public static bool TryProfile(HatCapture cap, SpriteRenderer back, SpriteRenderer front, SpriteRenderer body, float bodyScaleX,
+                                      float heightOverride, out byte[] rgba, out float y0, out float cellY, out float z0, out float cellZ)
+        {
+            rgba = null;
+            y0 = cellY = z0 = cellZ = 0f;
+            if (!TryFrame(body, bodyScaleX, heightOverride, out Frame f)) return false;
+            if (!cap.TryCapture(back, front, out rgba, out float minX, out float minY, out float cell)) return false;
+            y0 = (minX - f.Cx) * f.Facing / f.Height;
+            cellY = cell * f.Facing / f.Height;
+            z0 = 1f + (minY - f.Top) / f.Height;
+            cellZ = cell / f.Height;
+            return true;
+        }
+
         /// <summary>Gonfle un ou deux calques (chapeau, visière) placés sur le corps ; null si rien d'exploitable.</summary>
         public static HatMeshes Puff(HatCapture cap, SpriteRenderer back, SpriteRenderer front, SpriteRenderer body, float bodyScaleX,
                                      float heightOverride, float halfThickness, string name)
         {
-            if (!TryFrame(body, bodyScaleX, heightOverride, out Frame f)) return null;
-            if (!cap.TryCapture(back, front, out byte[] rgba, out float minX, out float minY, out float cell)) return null;
-            ShapeMesh s = HatShape.Build(rgba, HatCapture.Size, HatCapture.Size,
-                                         (minX - f.Cx) * f.Facing / f.Height, cell * f.Facing / f.Height,
-                                         1f + (minY - f.Top) / f.Height, cell / f.Height, halfThickness);
+            if (!TryProfile(cap, back, front, body, bodyScaleX, heightOverride, out byte[] rgba, out float y0, out float cy, out float z0, out float cz))
+                return null;
+            ShapeMesh s = HatShape.Build(rgba, HatCapture.Size, HatCapture.Size, y0, cy, z0, cz, halfThickness);
+            return Meshes(s, name);
+        }
+
+        /// <summary>Chapeau en volume (coque autour de la tête ou objet gonflé, voir <see cref="HatShape.BuildHat"/>) ; null si rien d'exploitable.</summary>
+        public static HatMeshes PuffHat(HatCapture cap, SpriteRenderer back, SpriteRenderer front, SpriteRenderer body, float bodyScaleX,
+                                        float heightOverride, string productId, string name)
+        {
+            if (!TryProfile(cap, back, front, body, bodyScaleX, heightOverride, out byte[] rgba, out float y0, out float cy, out float z0, out float cz))
+                return null;
+            ShapeMesh s = HatShape.BuildHat(rgba, HatCapture.Size, HatCapture.Size, y0, cy, z0, cz, HatShape.HalfThickness, productId);
             return Meshes(s, name);
         }
 
@@ -102,7 +128,7 @@ namespace AmongUs3D
             float facing = right ? 1f : -1f;
             if (!cap.TryCapture(null, pet, out byte[] rgba, out float minX, out float minY, out float cell)) return null;
             float half = M.Clamp(0.3f * sz.y, 0.05f, 0.3f);
-            ShapeMesh s = HatShape.Build(rgba, HatCapture.Size, HatCapture.Size, (minX - c.x) * facing, cell * facing, minY - mn.y, cell, half);
+            ShapeMesh s = HatShape.BuildPet(rgba, HatCapture.Size, HatCapture.Size, (minX - c.x) * facing, cell * facing, minY - mn.y, cell, half);
             return Meshes(s, "AU3D_Animal");
         }
 

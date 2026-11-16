@@ -107,7 +107,11 @@ namespace AmongUs3D
         private readonly List<WallMesh> _textured = new List<WallMesh>();
         private readonly List<WallSeg> _segments = new List<WallSeg>();   // murs "vision" (ligne de vue)
         private readonly List<WallSeg> _solidSegs = new List<WallSeg>();  // murs physiques (caméra 3e personne)
+        private readonly List<(float X, float Y, int Owner)> _visionEnds = new List<(float, float, int)>(); // bouts des murs "vision" ouverts
         private readonly Builder _b = new Builder(), _bt = new Builder();
+        private Terrain _terrain = Terrain.Flat;
+        /// <summary>Relief de la carte (plat sauf sur The Fungle).</summary>
+        public Terrain Ground => _terrain;
         private GameObject _root;
         private Material _material, _floorMaterial;
         private bool _includeTriggers;
@@ -117,6 +121,8 @@ namespace AmongUs3D
         private float _uvCx = float.NaN, _uvCy, _uvHalf;
 
         public string Summary { get; private set; } = "(aucune carte)";
+        /// <summary>Carte en cours (pour le plafond, réservé aux cartes d'intérieur).</summary>
+        public MapKind Kind { get; private set; }
         public int SegmentCount => _segments.Count;
 
         // ------------------------------------------------------------------ construction
@@ -138,7 +144,7 @@ namespace AmongUs3D
 
             var colliders = new List<Collider2D>();
             Collect(mapRoot, wallMask | obstacleMask, wallMask, colliders);
-            if (ModConfig.DumpGeometry.Value) DumpGeometry(colliders, wallMask);
+            if (ModConfig.DumpGeometry.Value) { DumpGeometry(colliders, wallMask); DumpLinks(mapRoot); }
 
             int wallCount = 0, wallTriggers = 0;
             foreach (Collider2D c in colliders)
@@ -151,6 +157,8 @@ namespace AmongUs3D
             _includeTriggers = wallCount > 0 && wallTriggers > wallCount * 0.7f;
 
             MapKind kind = Game.CurrentMapKind(mapRoot, isLobby);
+            Kind = kind;
+            _terrain = BuildTerrain(mapRoot, colliders, obstacleMask, kind);
             Color wallColor = WallColor(kind);
             Color doorColor = U.ParseColor(ModConfig.DoorColor.Value, U.Col(0.7f, 0.7f, 0.75f));
             Color obstacleColor = U.ParseColor(ModConfig.ObstacleColor.Value, U.Col(0.3f, 0.32f, 0.38f));
@@ -172,7 +180,14 @@ namespace AmongUs3D
                 int owner = _meshes.Count;
                 foreach (Poly p in polys)
                 {
-                    if (trim && !door)
+                    if (!door && !p.Closed && p.X.Length >= 2)
+                    {
+                        _visionEnds.Add((p.X[0], p.Y[0], owner));
+                        _visionEnds.Add((p.X[p.X.Length - 1], p.Y[p.X.Length - 1], owner));
+                    }
+                    if (_terrain.Active && !door)
+                        AddWallOnRelief(p, trim, wallH, owner);
+                    else if (trim && !door)
                         WallGeometry.AddPanelStrips(p.X, p.Y, p.Closed, wallH, 0.5f, owner, _b.X, _b.Y, _b.Z, _b.Shade, _b.Tris, _segments);
                     else
                         WallGeometry.AddStrips(p.X, p.Y, p.Closed, wallH, 0.5f, 0.62f, owner, _b.X, _b.Y, _b.Z, _b.Shade, _b.Tris, _segments);
@@ -183,6 +198,9 @@ namespace AmongUs3D
                     if (door) doors++;
                 }
             }
+
+            // 1 bis) portes : leur dessin est redressé à l'entrée du passage
+            int doorPanels = ModConfig.RaiseWallArt.Value && floorMaterial != null ? BuildDoorPanels(mapRoot, wallH, doorColor, layer) : 0;
 
             // 2) collisions physiques
             string detail = "";
@@ -197,7 +215,7 @@ namespace AmongUs3D
             }
 
             _lightDirty = true;
-            Summary = $"{walls} murs ({doors} portes), {detail}, {_segments.Count} segments, carte={kind}, " +
+            Summary = $"{walls} murs ({doors} portes, {doorPanels} dressées), {detail}, {_segments.Count} segments, carte={kind}, " +
                       $"triggers inclus={_includeTriggers} ({wallTriggers}/{wallCount}), calques murs={U.MaskToNames(wallMask)}, physiques={U.MaskToNames(obstacleMask)}";
             AmongUs3DPlugin.Logger.LogInfo("Carte 3D construite : " + Summary);
         }
@@ -610,12 +628,13 @@ namespace AmongUs3D
                         float t = (k + 0.5f) / e.Kind.Length;
                         float mx = e.Ax + (e.Bx - e.Ax) * t, my = e.Ay + (e.By - e.Ay) * t;
                         float near = NearestWall(mx, my);
-                        if (near < NearHide) { e.Kind[k] = Hidden; continue; }
+                        if (near < NearHide && Covered(e, k)) { e.Kind[k] = Hidden; continue; }
                         if (s.ShortLayer) { e.Kind[k] = Low; continue; }  // objets bas : jamais des murs
                         if (!e.Steep)
                         {
                             float d = ScanNorth(mx, my, maxFace, physical);
                             if (d >= MinFace) { e.Kind[k] = Face; e.D[k] = d; measured.Add(d); continue; }
+
                         }
                         if (near < NearTall) { e.Kind[k] = Tall; continue; }
                         e.Kind[k] = Low;
@@ -671,7 +690,8 @@ namespace AmongUs3D
             // ---- murs restés bas à compléter, objets bas adossés à un mur (réglage MursComplets)
             bool props = ModConfig.Decor3D.Value;
             int completed = 0, bumps = 0;
-            if (ModConfig.CompleteWalls.Value)
+            // En plein air (Polus, The Fungle) un contour bas est un rocher ou un bord de falaise, pas un mur à compléter.
+            if (ModConfig.CompleteWalls.Value && indoor)
             {
                 var scanned = new List<WallSeg>();
                 foreach (WallSeg sg in _segments)
@@ -694,12 +714,30 @@ namespace AmongUs3D
                 }
             }
 
+            // Relief : le long d'une pente (pied ou bord d'une falaise) un mur plein boucherait la vue ; il devient un rebord.
+            // Le dessin de la falaise est sur la pente elle-même.
+            if (_terrain.Active)
+                foreach (Solid s in solids)
+                {
+                    if (s.Furniture) continue;
+                    foreach (Edge e in s.Edges)
+                        for (int k = 0; k < e.Kind.Length; k++)
+                        {
+                            if (e.Kind[k] != Tall && e.Kind[k] != Face) continue;
+                            PieceEnds(e, k, out float x0, out float y0, out float x1, out float y1);
+                            if (OnSlope(x0, y0, x1, y1)) e.Kind[k] = Low;
+                        }
+                }
+
+            if (ModConfig.DumpGeometry.Value) DumpPieces(solids);
+
             // ---- maillages
             int tallCount = 0, faceCount = 0, lowCount = 0, furniture = 0;
             _propCounts.Clear();
             _emergencySolid = props && solids.Exists(x => x.Furniture && NameOf(x).IndexOf("emergency", StringComparison.OrdinalIgnoreCase) >= 0);
             var runX = new List<float>();
             var runY = new List<float>();
+            var runSegs = new List<WallSeg>();
             foreach (Solid s in solids)
             {
                 if (s.Furniture)
@@ -716,6 +754,7 @@ namespace AmongUs3D
                     EmitRuns(e, runX, runY, kd => kd == Face || kd == Tall,
                              () =>
                              {
+                                 runSegs.Add(new WallSeg { ax = runX[0], ay = runY[0], bx = runX[1], by = runY[1] });
                                  if (trim) WallGeometry.AddPanelStrips(runX, runY, false, wallH, 0.5f, owner, _b.X, _b.Y, _b.Z, _b.Shade, _b.Tris, _solidSegs);
                                  else WallGeometry.AddStrips(runX, runY, false, wallH, 0.5f, 0.62f, owner, _b.X, _b.Y, _b.Z, _b.Shade, _b.Tris, _solidSegs);
                              });
@@ -763,9 +802,113 @@ namespace AmongUs3D
                 Commit(_bt, s.Col, U.Col(1f, 1f, 1f), layer, false, "AU3D_Face", true);
             }
 
+            int joins = ModConfig.CompleteWalls.Value && solids.Count > 0 ? BuildJoins(runSegs, solids[0].Col, wallH, wallColor, layer) : 0;
+
             return $"{tallCount} murs physiques, {faceCount} faces redressées (hauteur type {defaultFace:0.00}), " +
                    $"{lowCount + lowObstacles} murets, {furniture} meubles" + PropSummary() +
-                   $", {completed} morceaux de mur complétés, {bumps} objets adossés";
+                   $", {completed} morceaux de mur complétés, {bumps} objets adossés, {joins} raccords";
+        }
+
+        /// <summary>
+        /// Un morceau n'est "caché" par un mur vision que s'il le longe d'un bout à l'autre : sinon son extrémité
+        /// dépasserait du mur vision sans être dessinée, et laisserait un trou.
+        /// </summary>
+        private bool Covered(Edge e, int k)
+        {
+            PieceEnds(e, k, out float x0, out float y0, out float x1, out float y1);
+            const float inset = 0.12f, limit = NearHide * 1.4f;
+            return NearestWall(x0 + (x1 - x0) * inset, y0 + (y1 - y0) * inset) < limit
+                && NearestWall(x1 + (x0 - x1) * inset, y1 + (y0 - y1) * inset) < limit;
+        }
+
+        private const float RimHeight = 0.25f;
+
+        /// <summary>Vrai si le terrain n'est pas au même niveau des deux côtés du segment (pied ou bord de falaise).</summary>
+        private bool OnSlope(float ax, float ay, float bx, float by)
+        {
+            float dx = bx - ax, dy = by - ay, len = MathF.Sqrt(dx * dx + dy * dy);
+            if (len < 1e-4f) return false;
+            float nx = -dy / len * 0.9f, ny = dx / len * 0.9f, mx = (ax + bx) * 0.5f, my = (ay + by) * 0.5f;
+            return MathF.Abs(_terrain.Height(mx + nx, my + ny) - _terrain.Height(mx - nx, my - ny)) >= 0.6f;
+        }
+
+        /// <summary>Mur "vision" sur une carte en relief : pleine hauteur sur le plat, simple rebord le long des pentes.</summary>
+        private void AddWallOnRelief(Poly p, bool trim, float wallH, int owner)
+        {
+            int n = p.X.Length, count = p.Closed ? n : n - 1;
+            var rx = new List<float>();
+            var ry = new List<float>();
+            bool current = false;
+            for (int s = 0; s < count; s++)
+            {
+                float ax = p.X[s], ay = p.Y[s], bx = p.X[(s + 1) % n], by = p.Y[(s + 1) % n];
+                bool slope = OnSlope(ax, ay, bx, by);
+                if (rx.Count > 0 && slope != current) { Flush(current); rx.Clear(); ry.Clear(); }
+                if (rx.Count == 0) { rx.Add(ax); ry.Add(ay); }
+                rx.Add(bx); ry.Add(by);
+                current = slope;
+            }
+            if (rx.Count > 1) Flush(current);
+
+            void Flush(bool slope)
+            {
+                if (slope) WallGeometry.AddStrips(rx, ry, false, RimHeight, 0.5f, 0.8f, owner, _b.X, _b.Y, _b.Z, _b.Shade, _b.Tris, _segments);
+                else if (trim) WallGeometry.AddPanelStrips(rx, ry, false, wallH, 0.5f, owner, _b.X, _b.Y, _b.Z, _b.Shade, _b.Tris, _segments);
+                else WallGeometry.AddStrips(rx, ry, false, wallH, 0.5f, 0.62f, owner, _b.X, _b.Y, _b.Z, _b.Shade, _b.Tris, _segments);
+            }
+        }
+
+        private static bool SamePoint(float ax, float ay, float bx, float by)
+        {
+            float dx = ax - bx, dy = ay - by;
+            return dx * dx + dy * dy < 1e-6f;
+        }
+
+        /// <summary>
+        /// Petits raccords pleine hauteur entre un bout de mur resté libre et le mur voisin tout proche (moins de 0,45 :
+        /// plus étroit qu'un passage). Sans eux, on voit le jour entre deux murs qui ne se touchent pas tout à fait.
+        /// </summary>
+        private int BuildJoins(List<WallSeg> runs, Collider2D anchor, float wallH, Color wallColor, int layer)
+        {
+            const float touch = 0.03f, reach = 0.45f;
+            var ends = new List<(float X, float Y)>();
+            foreach (WallSeg r in runs) { ends.Add((r.ax, r.ay)); ends.Add((r.bx, r.by)); }
+            foreach ((float x, float y, int owner) in _visionEnds)
+                if (owner < _meshes.Count && _meshes[owner].Scan) ends.Add((x, y));
+
+            _b.Clear();
+            int count = 0, mesh = _meshes.Count;
+            foreach ((float px, float py) in ends)
+            {
+                float best = reach, qx = 0f, qy = 0f;
+                bool connected = false, found = false;
+                for (int pass = 0; pass < 2 && !connected; pass++)
+                {
+                    List<WallSeg> list = pass == 0 ? runs : _segments;
+                    for (int i = 0; i < list.Count; i++)
+                    {
+                        WallSeg s = list[i];
+                        if (pass == 1 && !_meshes[s.owner].Scan) continue;
+                        // rejet rapide
+                        if (px < MathF.Min(s.ax, s.bx) - reach || px > MathF.Max(s.ax, s.bx) + reach ||
+                            py < MathF.Min(s.ay, s.by) - reach || py > MathF.Max(s.ay, s.by) + reach) continue;
+                        // le mur dont ce point est un bout ne compte pas
+                        if (SamePoint(px, py, s.ax, s.ay) || SamePoint(px, py, s.bx, s.by)) continue;
+                        float sx = s.bx - s.ax, sy = s.by - s.ay, l2 = sx * sx + sy * sy;
+                        float t = l2 < 1e-9f ? 0f : M.Clamp01(((px - s.ax) * sx + (py - s.ay) * sy) / l2);
+                        float cx = s.ax + sx * t, cy = s.ay + sy * t;
+                        float d = MathF.Sqrt((cx - px) * (cx - px) + (cy - py) * (cy - py));
+                        if (d <= touch) { connected = true; break; }
+                        if (d < best) { best = d; qx = cx; qy = cy; found = true; }
+                    }
+                }
+                if (connected || !found) continue;
+                WallGeometry.AddStrips(new[] { px, qx }, new[] { py, qy }, false, wallH, 0.5f, 0.62f, mesh,
+                                       _b.X, _b.Y, _b.Z, _b.Shade, _b.Tris, null);
+                count++;
+            }
+            if (count == 0) return 0;
+            return Commit(_b, anchor, wallColor, layer, false, "AU3D_Raccord", false) != null ? count : 0;
         }
 
         /// <summary>
@@ -986,7 +1129,8 @@ namespace AmongUs3D
             float minX = float.MaxValue, minY = float.MaxValue, maxX = float.MinValue, maxY = float.MinValue;
             for (int i = 0; i < n; i++)
             {
-                verts[i] = U.V3(b.X[i], b.Y[i], b.Z[i]);
+                // posé sur le relief : chaque sommet monte de la hauteur du sol à cet endroit ("haut" = -Z)
+                verts[i] = U.V3(b.X[i], b.Y[i], b.Z[i] - (_terrain.Active ? _terrain.Height(b.X[i], b.Y[i]) : 0f));
                 if (b.X[i] < minX) minX = b.X[i];
                 if (b.X[i] > maxX) maxX = b.X[i];
                 if (b.Y[i] < minY) minY = b.Y[i];
@@ -1060,6 +1204,8 @@ namespace AmongUs3D
             _textured.Clear();
             _segments.Clear();
             _solidSegs.Clear();
+            _visionEnds.Clear();
+            _terrain = Terrain.Flat;
             U.SafeDestroy(_root);
             U.SafeDestroy(_material);
             _root = null;
@@ -1190,6 +1336,21 @@ namespace AmongUs3D
         {
             float best = ClipAgainst(_segments, ax, ay, bx, by, 1f);
             return ClipAgainst(_solidSegs, ax, ay, bx, by, best);
+        }
+
+        /// <summary>
+        /// Comme <see cref="ClipFraction"/>, pour une caméra qui a une épaisseur : trois trajets parallèles,
+        /// écartés de <paramref name="margin"/>, pour qu'elle ne passe pas non plus un coin de mur.
+        /// </summary>
+        public float ClipFractionWide(float ax, float ay, float bx, float by, float margin)
+        {
+            float dx = bx - ax, dy = by - ay, len = MathF.Sqrt(dx * dx + dy * dy);
+            float best = ClipFraction(ax, ay, bx, by);
+            if (len < 1e-4f) return best;
+            float nx = -dy / len * margin, ny = dx / len * margin;
+            // Les trajets latéraux partent du joueur lui-même (il peut être collé à un mur) et s'écartent en chemin.
+            best = MathF.Min(best, ClipFraction(ax, ay, bx + nx, by + ny));
+            return MathF.Min(best, ClipFraction(ax, ay, bx - nx, by - ny));
         }
 
         private float ClipAgainst(List<WallSeg> segs, float ax, float ay, float bx, float by, float best)

@@ -11,6 +11,7 @@ namespace AmongUs3D
         public float Yaw;             // orientation de la caméra
         public VisionParams Vision;
         public bool ThirdPerson;
+        public float OwnAlpha;        // opacité du personnage du joueur en 3e personne (il s'efface quand la caméra est collée à lui)
         public bool SimulateVision;
         public int GameMask;          // calques visibles par la caméra 2D (gère les fantômes)
         public float MaxDistance;
@@ -597,7 +598,7 @@ namespace AmongUs3D
             e.Dist = MathF.Sqrt(cdx * cdx + cdy * cdy);
 
             float alpha;
-            if (isLocal) alpha = f.ThirdPerson ? 1f : 0f;
+            if (isLocal) alpha = f.ThirdPerson ? f.OwnAlpha : 0f;
             else if (e.Dist > f.MaxDistance) alpha = 0f;
             // collé à la caméra (ex. son propre animal qui suit) : masqué, sauf l'animal qu'on caresse
             else if (!f.ThirdPerson && e.Dist < 0.6f && (e.Kind == Kind.Player || (e.Kind == Kind.Pet && !e.BeingPet))) alpha = 0f;
@@ -806,7 +807,8 @@ namespace AmongUs3D
             float bl = MathF.Max(0.001f, e.Dist);
             float fx = cdx / bl, fy = cdy / bl;
             if (e.Dist < 0.001f) M.YawBasis(f.Yaw, out fx, out fy, out _, out _);
-            e.RootT.position = U.V3(g.x, g.y, feet);
+            float ground = f.Walls != null ? f.Walls.Ground.Height(g.x, g.y) : 0f; // relief (The Fungle)
+            e.RootT.position = U.V3(g.x, g.y, feet - ground);
             e.RootT.rotation = U.LookRotation(fx, fy, 0f, 0f, 0f, -1f);
 
             // ---- modèle 3D
@@ -834,7 +836,7 @@ namespace AmongUs3D
                 model.SetPop(popScale, popLift);
                 if (e.Kind == Kind.Body)
                     model.SetCorpse(animated ? Time.time - e.BornAt : -1f, animated && bodyState.Viper ? Dissolve(e, bodyState.Dissolve) : 0f);
-                model.Update(g.x, g.y, height, faceX, faceY, running, f.DeltaTime, a);
+                model.Update(g.x, g.y, height, faceX, faceY, running, f.DeltaTime, a, ground);
                 model.Show(true);
                 CrewModel other = ghost ? e.Model : e.GhostModel;
                 other?.Show(false);
@@ -856,7 +858,7 @@ namespace AmongUs3D
                 if (petShown3D && e.PetModel != null)
                 {
                     e.PetModel.SetMesh(e.PetMesh);
-                    e.PetModel.Update(g.x, g.y, e.FaceX, e.FaceY, e.Speed > 0.2f, f.DeltaTime, e.Alpha);
+                    e.PetModel.Update(g.x, g.y, e.FaceX, e.FaceY, e.Speed > 0.2f, f.DeltaTime, e.Alpha, ground);
                     e.PetModel.Show(true);
                 }
                 else
@@ -1028,9 +1030,9 @@ namespace AmongUs3D
                 float facing = right ? 1f : -1f;
                 if (h > 0.05f && _capture.TryCapture(back?.SrcSprite, front?.SrcSprite, out byte[] rgba, out float minX, out float minY, out float cell))
                 {
-                    ShapeMesh s = HatShape.Build(rgba, HatCapture.Size, HatCapture.Size,
-                                                 (minX - c.x) * facing / h, cell * facing / h,
-                                                 1f + (minY - mx.y) / h, cell / h, HatShape.HalfThickness);
+                    ShapeMesh s = HatShape.BuildHat(rgba, HatCapture.Size, HatCapture.Size,
+                                                    (minX - c.x) * facing / h, cell * facing / h,
+                                                    1f + (minY - mx.y) / h, cell / h, HatShape.HalfThickness, Game.HatId(e.Player));
                     if (s != null)
                     {
                         made = new HatMeshes { Solid = CrewKit.BuildMesh(s, "AU3D_Chapeau", 0f, out _) };

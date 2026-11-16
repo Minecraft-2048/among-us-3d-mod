@@ -4,7 +4,7 @@ using System.Collections.Generic;
 namespace AmongUs3D
 {
     /// <summary>Sorte de meuble, reconnue d'après le nom et la forme de sa collision.</summary>
-    internal enum PropKind { Generic, RoundTable, Drum, Table, Console, Chair, Bed, Crate, Button }
+    internal enum PropKind { Generic, RoundTable, Drum, Table, Console, Chair, Bed, Crate, Button, Cabinet }
 
     /// <summary>Empreinte au sol d'un meuble : rectangle orienté le plus serré et rondeur.</summary>
     internal struct Footprint
@@ -30,6 +30,7 @@ namespace AmongUs3D
         public float WallX, WallY;   // direction (unitaire) du mur le plus proche
         public float LookX, LookY;   // direction de ce qu'on regarde assis (console proche, sinon le mur)
         public float Height;         // hauteur des meubles non reconnus (réglage HauteurDesObstacles)
+        public float ArtHeight;      // vraie hauteur lue sur le dessin du jeu (0 = inconnue)
         public uint BaseColor;       // couleur des meubles non reconnus (0xRRGGBB)
     }
 
@@ -141,6 +142,7 @@ namespace AmongUs3D
             string n = (name ?? "").ToLowerInvariant();
             float len = 2f * f.HalfLen, wid = 2f * f.HalfWid;
             if (Has(n, "emergency")) return PropKind.Button;
+            if (Has(n, "vend")) return PropKind.Cabinet; // distributeur : avant "console", son nom contient les deux
             if (Has(n, "chair", "seat", "stool", "sofa", "couch", "weapon")) return PropKind.Chair;
             if (Has(n, "bed")) return PropKind.Bed;
             if (Has(n, "crate", "box", "cargo", "barrel", "drum")) return f.IsRound ? PropKind.Drum : PropKind.Crate;
@@ -195,6 +197,7 @@ namespace AmongUs3D
                 case PropKind.Chair: top = Chair(k, L, W, lu, lv); break;
                 case PropKind.Bed: top = Bed(k, L, W, wu); break;
                 case PropKind.Crate: top = Crate(k, L, W); break;
+                case PropKind.Cabinet: top = Cabinet(k, L, W, h); break;
                 default:
                     var pu = new List<float>(xs.Count);
                     var pv = new List<float>(xs.Count);
@@ -363,12 +366,24 @@ namespace AmongUs3D
         /// <summary>Forme non reconnue : la collision extrudée, arêtes arrondies, posée sur une plinthe en retrait.</summary>
         private static float Generic(PropKit k, List<float> pu, List<float> pv, float W, in PropHints h)
         {
-            float H = M.Clamp(h.Height, 0.08f, 2f), plinth = MathF.Min(0.05f, 0.3f * H);
+            // Vraie hauteur si le dessin du jeu la donne, sinon celle des obstacles bas.
+            float H = h.ArtHeight >= 0.2f ? M.Clamp(h.ArtHeight, 0.2f, 1.9f) : M.Clamp(h.Height, 0.08f, 2f);
+            float plinth = MathF.Min(0.05f, 0.3f * H);
             var iu = new List<float>();
             var iv = new List<float>();
             PropKit.Inset(pu, pv, MathF.Min(0.035f, 0.3f * W), iu, iv);
             k.Prism(iu, iv, 0f, plinth, 0f, 1, Darker(h.BaseColor, 0.55f), false, false);
             k.Prism(pu, pv, plinth, H, M.Clamp(0.25f * W, 0.01f, 0.05f), 2, h.BaseColor, true, true);
+            return H;
+        }
+
+        /// <summary>Meuble haut (distributeur, armoire, machine) : caisson sur plinthe ; façade et dessus peints avec le dessin du jeu.</summary>
+        private static float Cabinet(PropKit k, float L, float W, in PropHints h)
+        {
+            float H = h.ArtHeight >= 0.3f ? M.Clamp(h.ArtHeight, 0.3f, 1.9f) : 1.25f;
+            float small = MathF.Min(L, W), plinth = MathF.Min(0.06f, 0.2f * H), inset = MathF.Min(0.03f, 0.2f * small);
+            k.Box(-L + inset, -W + inset, L - inset, W - inset, 0f, plinth, 0f, MetalDark, false, false);
+            k.Box(-L, -W, L, W, plinth, H, MathF.Min(0.03f, 0.2f * small), ConsoleBody, true, true);
             return H;
         }
 

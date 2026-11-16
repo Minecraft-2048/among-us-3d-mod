@@ -30,11 +30,13 @@ internal static class MathTests
         WallStrips();
         GhostShape();
         HatShapes();
+        HatWrap();
         Props();
         SkinSampling();
         WallRulesTests();
         Animations();
         KeyLayouts();
+        TerrainLevels();
 
         Console.WriteLine($"{_passed} tests réussis, {_failed} échecs");
         return _failed == 0 ? 0 : 1;
@@ -110,6 +112,24 @@ internal static class MathTests
         outdoor.Indoor = false;
         Check(PropShape.Classify("Rock", round, outdoor) == PropKind.Generic, "meuble : forme ronde en extérieur = forme générique");
 
+        // distributeur : meuble haut, à la hauteur lue sur son dessin
+        Polygon(xs, ys, 3f, 1f, 0.5f, 0.5f, 4);
+        Footprint square = PropShape.Analyze(xs, ys);
+        Check(PropShape.Classify("VendingMachineConsole", square, indoor) == PropKind.Cabinet, "meuble : un distributeur est un meuble haut");
+        PropHints tall = indoor;
+        tall.ArtHeight = 1.1f;
+        var cabSolid = new ShapeMesh();
+        var cabArt = new ShapeMesh();
+        float cabTop = PropShape.Build(PropKind.Cabinet, square, xs, ys, tall, cabSolid, cabArt);
+        float cabMax = 0f;
+        for (int i = 0; i < cabSolid.VertexCount; i++) cabMax = MathF.Max(cabMax, cabSolid.Z[i]);
+        Check(Near(cabTop, 1.1f) && Near(cabMax, 1.1f, 0.01f) && ValidMesh(cabSolid) && cabArt.VertexCount > 0, "meuble haut : à la hauteur de son dessin, façade peinte");
+        var genSolid = new ShapeMesh();
+        var genArt = new ShapeMesh();
+        Check(Near(PropShape.Build(PropKind.Generic, square, xs, ys, tall, genSolid, genArt), 1.1f)
+              && Near(PropShape.Build(PropKind.Generic, square, xs, ys, indoor, new ShapeMesh(), new ShapeMesh()), 0.3f),
+              "meuble non reconnu : vraie hauteur si le dessin la donne, basse sinon");
+
         // rectangle de 2 x 0,8 tourné de 30° : centre, axes et demi-tailles retrouvés
         float ang = MathF.PI / 6f;
         Polygon(xs, ys, 2f, 3f, 1f * MathF.Sqrt(2f), 0.4f * MathF.Sqrt(2f), 4, ang);
@@ -143,14 +163,15 @@ internal static class MathTests
             var solid = new ShapeMesh();
             var art = new ShapeMesh();
             float top = PropShape.Build(kind, fp, xs, ys, emergency, solid, art);
+            float maxTop = kind == PropKind.Cabinet ? 2f : 0.7f; // un meuble haut (distributeur) dépasse les autres
             bool inside = true, grounded = false;
             for (int i = 0; i < solid.VertexCount; i++)
             {
-                inside &= PropShape.Near(fp, solid.X[i], solid.Y[i], 0.03f) && solid.Z[i] > -1e-4f && solid.Z[i] < 0.8f;
+                inside &= PropShape.Near(fp, solid.X[i], solid.Y[i], 0.03f) && solid.Z[i] > -1e-4f && solid.Z[i] < maxTop + 0.1f;
                 grounded |= solid.Z[i] < 1e-3f;
             }
             bool painted = kind == PropKind.Chair || kind == PropKind.Bed || kind == PropKind.Button || art.Tris.Count > 0;
-            Check(ValidMesh(solid) && ValidMesh(art) && solid.HasColors && solid.Tris.Count > 30 && top > 0.1f && top < 0.7f,
+            Check(ValidMesh(solid) && ValidMesh(art) && solid.HasColors && solid.Tris.Count > 30 && top > 0.1f && top < maxTop,
                   "meuble 3D " + kind + " : maillage valide");
             Check(inside && grounded && painted, "meuble 3D " + kind + " : posé au sol, dans son empreinte, dessus peint");
             if (kind == PropKind.RoundTable || kind == PropKind.Button)
@@ -217,6 +238,79 @@ internal static class MathTests
         Check(left != null && left.VertexCount == hat.VertexCount && FacesOutward(left), "chapeau : version tournée vers la gauche");
 
         Check(HatShape.Build(new byte[W * H * 4], W, H, 0f, 0.1f, 0f, 0.1f, 0.3f) == null, "chapeau : image vide = pas de chapeau");
+    }
+
+    /// <summary>Chapeaux : coque autour de la tête (bonnet, couronne) ou objet posé dessus (gonflé), exceptions.</summary>
+    private static void HatWrap()
+    {
+        const int W = 64, H = 64;
+        const float cell = 1f / 64f, y0 = -0.5f, z0 = 0.6f; // image : y de -0,5 à 0,5 ; z de 0,6 à 1,6
+        byte[] Img(Func<float, float, bool> inside)
+        {
+            var px = new byte[W * H * 4];
+            for (int j = 0; j < H; j++)
+            for (int i = 0; i < W; i++)
+            {
+                float y = y0 + (i + 0.5f) * cell, z = z0 + (j + 0.5f) * cell;
+                if (!inside(y, z)) continue;
+                int k = (j * W + i) * 4;
+                px[k] = 60; px[k + 1] = 60; px[k + 2] = 200; px[k + 3] = 255;
+            }
+            return px;
+        }
+        float kx = CrewShape.BodyRadiusX / CrewShape.BodyRadiusY;
+
+        // bonnet : couvre le haut de la tête -> coque qui l'entoure, fermée en haut
+        ShapeMesh b = HatShape.BuildHat(Img((y, z) => z >= 0.78f && z <= 1.08f && MathF.Abs(y) <= 0.27f), W, H, y0, cell, z0, cell, HatShape.HalfThickness);
+        Check(b != null && ValidMesh(b) && FacesOutward(b), "coque : maillage valide, triangles tournés vers l'extérieur");
+        if (b != null)
+        {
+            bool outside = true, lid = false;
+            float maxX = 0f;
+            for (int i = 0; i < b.VertexCount; i++)
+            {
+                maxX = MathF.Max(maxX, MathF.Abs(b.X[i]));
+                if (b.Nz[i] > 0.99f && b.Z[i] > 1.05f) lid = true;
+                float hd = HatShape.HeadHalfDepth(b.Z[i]);
+                if (hd <= 0f) continue;
+                float u = b.X[i] / (kx * hd), v = b.Y[i] / hd;
+                if (u * u + v * v < 0.8f) outside = false;
+            }
+            Check(outside, "coque : rien ne rentre dans la tête");
+            Check(maxX > 0.28f && maxX < 0.6f, "coque : aussi large que la tête, sans plus");
+            Check(lid, "coque : fermée en haut");
+        }
+
+        // couronne : bandeau + trois petites pointes -> les pointes se posent sur l'anneau, des deux côtés de la tête
+        ShapeMesh c = HatShape.BuildHat(Img((y, z) => MathF.Abs(y) <= 0.26f && ((z >= 0.86f && z <= 1.02f)
+            || (z > 1.02f && z <= 1.12f && MathF.Abs(MathF.IEEERemainder(y, 0.16f)) < 0.04f * (1.12f - z) / 0.10f))),
+            W, H, y0, cell, z0, cell, HatShape.HalfThickness);
+        Check(c != null && ValidMesh(c) && FacesOutward(c), "couronne : maillage valide");
+        if (c != null)
+        {
+            bool left = false, right = false;
+            for (int i = 0; i < c.VertexCount; i++)
+            {
+                if (c.Z[i] < 1.05f) continue;
+                if (c.X[i] > 0.15f) right = true;
+                if (c.X[i] < -0.15f) left = true;
+            }
+            Check(left && right, "couronne : pointes sur l'anneau, de chaque côté de la tête");
+        }
+
+        // boule posée sur la tête -> objet gonflé, à peu près rond
+        ShapeMesh o = HatShape.BuildHat(Img((y, z) => (y * y + (z - 1.15f) * (z - 1.15f)) <= 0.12f * 0.12f), W, H, y0, cell, z0, cell, HatShape.HalfThickness);
+        Check(o != null && ValidMesh(o) && FacesOutward(o), "objet posé : maillage valide");
+        if (o != null)
+        {
+            float maxX = 0f;
+            for (int i = 0; i < o.VertexCount; i++) maxX = MathF.Max(maxX, MathF.Abs(o.X[i]));
+            Check(maxX > 0.03f && maxX < 0.16f, "objet posé : épaisseur proche de sa largeur (pas une plaque)");
+        }
+
+        Check(HatShape.KeepPuffed("hat_EarmuffGreen") && HatShape.KeepPuffed("hat_mira_headset_pink") && HatShape.KeepPuffed("hat_pk03_Headphones"),
+              "exceptions : cache-oreilles et casques gonflés");
+        Check(!HatShape.KeepPuffed("hat_crownBean") && !HatShape.KeepPuffed(null), "exceptions : les autres chapeaux suivent la règle");
     }
 
     private static float ThicknessAt(ShapeMesh m, float y, float z)
@@ -464,6 +558,26 @@ internal static class MathTests
         WallRules.FindBumps((WallRules.Piece[])alcove.Clone(), true, physical, bx, by);
         Check(bx.Count == 0, "alcôve : un creux praticable n'est pas un meuble");
         Check(WallRules.CompleteWalls(alcove, true, vision, physical) == 4, "alcôve : le fond devient un mur");
+    }
+
+    private static void TerrainLevels()
+    {
+        // Carte de 10 x 10 : une zone basse (y de 0 à 4), une falaise (y de 4 à 6), une zone haute (y de 6 à 10),
+        // et une échelle de 3 de long qui monte de l'une à l'autre.
+        var walls = Rectangle(0f, 0f, 10f, 10f);
+        walls.Add(new WallSeg { ax = 0f, ay = 4f, bx = 10f, by = 4f });
+        walls.Add(new WallSeg { ax = 0f, ay = 6f, bx = 10f, by = 6f });
+        var ladders = new List<WallSeg> { new WallSeg { ax = 5f, ay = 3.5f, bx = 5f, by = 6.5f } };
+        Terrain t = Terrain.Build(walls, ladders);
+        Check(t.Active && t.ZoneCount == 2 && Near(t.MaxHeight, 3f), "relief : deux niveaux séparés par le dénivelé de l'échelle");
+        float low = t.Height(5f, 2f), high = t.Height(5f, 8f), mid = t.Height(5f, 5f);
+        Check(Near(high - low, 3f, 0.02f) && mid > low + 0.8f && mid < high - 0.8f, "relief : zones plates, falaise en pente entre les deux");
+        Check(Near(t.Height(2f, 1f), low, 0.02f) && Near(t.Height(8f, 9f), high, 0.02f), "relief : toute une zone est au même niveau");
+        Check(Near(MathF.Min(low, high), 0f, 0.02f) || Near(MathF.Max(low, high), 0f, 0.02f), "relief : le niveau 0 est celui d'une des zones");
+        Check(!Terrain.Build(walls, new List<WallSeg>()).Active && Terrain.Flat.Height(3f, 3f) == 0f, "relief : sans échelle la carte reste plate");
+        // une échelle qui ne change pas de zone (pas de falaise entre ses bouts) ne crée pas de relief
+        var open = Rectangle(0f, 0f, 10f, 10f);
+        Check(!Terrain.Build(open, ladders).Active, "relief : une échelle dans une seule zone ne crée pas de niveau");
     }
 
     private static void KeyLayouts()

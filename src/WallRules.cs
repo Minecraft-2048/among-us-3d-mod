@@ -23,7 +23,7 @@ namespace AmongUs3D
 
         private const float Probe = 0.12f;       // distance des points testés de part et d'autre d'un morceau
         private const float WallReach = 3f;      // un mur "vision" plus loin que cela, derrière, n'est plus "ce mur"
-        private static readonly float Cos15 = MathF.Cos(15f * M.Deg2Rad), Cos25 = MathF.Cos(25f * M.Deg2Rad);
+        private static readonly float Cos15 = MathF.Cos(15f * M.Deg2Rad), Cos25 = MathF.Cos(25f * M.Deg2Rad), Cos40 = MathF.Cos(40f * M.Deg2Rad);
         // Trois directions quelconques (unitaires) : on vote, pour qu'un rayon passant par un sommet ne trompe pas.
         private static readonly float[] RayX = { 0.99991f, -0.20552f, -0.82432f }, RayY = { 0.01370f, 0.97865f, -0.56610f };
 
@@ -75,6 +75,22 @@ namespace AmongUs3D
             dx /= l; dy /= l;
         }
 
+        // Voisin d'une section droite, sans savoir de quel côté on marche.
+        private const int NearNone = 0, NearWallAligned = 1, NearWallAngled = 2, NearLow = 3;
+
+        private static int Neighbour(Piece[] c, bool closed, int idx, float dx, float dy)
+        {
+            int n = c.Length;
+            if (idx < 0 || idx >= n)
+            {
+                if (!closed) return NearNone;
+                idx = ((idx % n) + n) % n;
+            }
+            if (c[idx].Kind == Low || c[idx].Kind == Bump) return NearLow;
+            Dir(c[idx], out float ex, out float ey);
+            return ex * dx + ey * dy >= Cos40 ? NearWallAligned : NearWallAngled; // un mur qui continue, même en biais
+        }
+
         // Ce qu'il y a au bout d'une section droite.
         private const int EndNone = 0, EndWall = 1, EndAligned = 2, EndHollow = 3, EndCorner = 4;
 
@@ -120,30 +136,52 @@ namespace AmongUs3D
                     float lx = c[last].Bx - c[first].Ax, ly = c[last].By - c[first].Ay, len = MathF.Sqrt(lx * lx + ly * ly);
                     if (len < 1e-4f) continue;
                     float dx = lx / len, dy = ly / len, nx = -dy, ny = dx;
-                    int m = last - first + 1, wa = 0, wb = 0;
-                    for (int q = first; q <= last; q++)
-                    {
-                        float mx = (c[q].Ax + c[q].Bx) * 0.5f, my = (c[q].Ay + c[q].By) * 0.5f;
-                        if (Walkable(mx + nx * Probe, my + ny * Probe, physical)) wa++;
-                        if (Walkable(mx - nx * Probe, my - ny * Probe, physical)) wb++;
-                    }
-                    float sign;
-                    if (wa * 2 > m && wb * 2 < m) sign = 1f;
-                    else if (wb * 2 > m && wa * 2 < m) sign = -1f;
-                    else continue; // praticable des deux côtés (barrière isolée) ou d'aucun
-                    float wx = nx * sign, wy = ny * sign; // normale vers le côté praticable
+                    int m = last - first + 1;
 
-                    int a = End(c, closed, first - 1, dx, dy, wx, wy, true), b = End(c, closed, last + 1, dx, dy, wx, wy, false);
-                    bool tall = a == EndWall || b == EndWall;
-                    if (!tall && (a == EndHollow || a == EndNone) && (b == EndHollow || b == EndNone) && !(a == EndNone && b == EndNone))
+                    // 1) Prolonge un mur : un voisin aligné est un mur. Aucun besoin de savoir de quel côté on marche.
+                    int na = Neighbour(c, closed, first - 1, dx, dy), nb = Neighbour(c, closed, last + 1, dx, dy);
+                    bool tall = na == NearWallAligned || nb == NearWallAligned;
+
+                    // 2) Côté de salle entre deux coins de mur : un mur "vision" est le premier obstacle, d'un côté ou de l'autre.
+                    if (!tall && na == NearWallAngled && nb == NearWallAngled)
                     {
                         int hits = 0;
                         for (int q = first; q <= last; q++)
                         {
                             float mx = (c[q].Ax + c[q].Bx) * 0.5f, my = (c[q].Ay + c[q].By) * 0.5f;
-                            if (VisionFirst(mx, my, -wx, -wy, WallReach, vision, physical)) hits++;
+                            if (VisionFirst(mx, my, nx, ny, 1.5f, vision, physical) || VisionFirst(mx, my, -nx, -ny, 1.5f, vision, physical)) hits++;
                         }
                         tall = hits >= 0.7f * m;
+                    }
+
+                    // 3) Sinon il faut savoir de quel côté on marche : côté de salle entre deux coins rentrants (ou un bout
+                    //    de chaîne), avec un mur "vision" pour premier obstacle derrière.
+                    if (!tall)
+                    {
+                        int wa = 0, wb = 0;
+                        for (int q = first; q <= last; q++)
+                        {
+                            float mx = (c[q].Ax + c[q].Bx) * 0.5f, my = (c[q].Ay + c[q].By) * 0.5f;
+                            if (Walkable(mx + nx * Probe, my + ny * Probe, physical)) wa++;
+                            if (Walkable(mx - nx * Probe, my - ny * Probe, physical)) wb++;
+                        }
+                        float sign;
+                        if (wa * 2 > m && wb * 2 < m) sign = 1f;
+                        else if (wb * 2 > m && wa * 2 < m) sign = -1f;
+                        else continue; // praticable des deux côtés (barrière isolée) ou d'aucun
+                        float wx = nx * sign, wy = ny * sign; // normale vers le côté praticable
+
+                        int a = End(c, closed, first - 1, dx, dy, wx, wy, true), b = End(c, closed, last + 1, dx, dy, wx, wy, false);
+                        if ((a == EndHollow || a == EndNone) && (b == EndHollow || b == EndNone) && !(a == EndNone && b == EndNone))
+                        {
+                            int hits = 0;
+                            for (int q = first; q <= last; q++)
+                            {
+                                float mx = (c[q].Ax + c[q].Bx) * 0.5f, my = (c[q].Ay + c[q].By) * 0.5f;
+                                if (VisionFirst(mx, my, -wx, -wy, WallReach, vision, physical)) hits++;
+                            }
+                            tall = hits >= 0.7f * m;
+                        }
                     }
                     if (!tall) continue;
                     for (int q = first; q <= last; q++) c[q].Kind = Tall;

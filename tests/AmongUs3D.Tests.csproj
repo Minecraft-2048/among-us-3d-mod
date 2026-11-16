@@ -13,6 +13,7 @@
     <Compile Include="../src/HatShape.cs" />
     <Compile Include="../src/PropShape.cs" />
     <Compile Include="../src/WallRules.cs" />
+    <Compile Include="../src/Terrain.cs" />
     <Compile Include="MathTests.cs" />
   </ItemGroup>
 </Project>

@@ -17,6 +17,7 @@ namespace AmongUs3D
         public static readonly ShapeMesh CorpseShape = CrewShape.Corpse();
         public static readonly ShapeMesh GhostShape = CrewShape.Ghost();
         public static readonly ShapeMesh PuddleShape = CrewShape.Puddle();
+        public static readonly ShapeMesh ShadowShape = CrewShape.ShadowDisc();
         // Cadavre basculé de 0 à 90° (tous les 2°) : de combien le remonter pour qu'il reste posé sur le sol.
         private static readonly float[] CorpseLift = BuildCorpseLift();
 
@@ -35,7 +36,7 @@ namespace AmongUs3D
         }
 
         public Material Solid, Outline;
-        public Mesh BodyOutline, LegOutline, CorpseOutline, GhostOutline, PuddleMesh;
+        public Mesh BodyOutline, LegOutline, CorpseOutline, GhostOutline, PuddleMesh, ShadowMesh;
 
         public static CrewKit Create()
         {
@@ -55,6 +56,7 @@ namespace AmongUs3D
             Black(kit.CorpseOutline, c3);
             Black(kit.GhostOutline, c4);
             kit.PuddleMesh = BuildMesh(PuddleShape, "AU3D_Flaque", 0f, out _);
+            kit.ShadowMesh = BuildMesh(ShadowShape, "AU3D_Ombre", 0f, out _);
             return kit;
         }
 
@@ -192,6 +194,7 @@ namespace AmongUs3D
             U.SafeDestroy(CorpseOutline);
             U.SafeDestroy(GhostOutline);
             U.SafeDestroy(PuddleMesh);
+            U.SafeDestroy(ShadowMesh);
         }
     }
 
@@ -225,6 +228,9 @@ namespace AmongUs3D
         private CrewKit _kit;
         // Animations : cadavre (âge depuis la mort, dissolution par la Vipère) et saut dans une bouche d'aération.
         private float _corpseAge = -1f, _dissolve, _popScale = 1f, _popLift;
+        private Transform _shadowT;
+        private Material _shadowMat;
+        private float _lastShadow = -1f;
         private GameObject _puddleGo;
         private Transform _puddleT;
         private Material _puddleMat;
@@ -275,6 +281,12 @@ namespace AmongUs3D
                 _legMesh = CrewKit.BuildMesh(CrewKit.LegShape, "AU3D_CrewLeg", 0f, out _legColors);
                 _legL = AddLeg("jambe G", -CrewShape.LegSpacing, kit);
                 _legR = AddLeg("jambe D", CrewShape.LegSpacing, kit);
+            }
+            if (ModConfig.ContactShadows.Value && kit.ShadowMesh != null)
+            {
+                // ombre ronde au sol : le personnage a l'air posé par terre
+                _shadowMat = new Material(kit.Solid);
+                _shadowT = AddPart("ombre", _rootT, kit.ShadowMesh, _shadowMat, false).transform;
             }
             Root.SetActive(false);
         }
@@ -415,7 +427,7 @@ namespace AmongUs3D
         /// <param name="faceX">direction regardée (vecteur unitaire sur la carte)</param>
         /// <param name="running">vrai si le personnage marche (ou, pour un fantôme, se déplace)</param>
         /// <param name="alpha">opacité (fondu au bord du champ de vision, fantômes, rôles invisibles...)</param>
-        public void Update(float x, float y, float height, float faceX, float faceY, bool running, float dt, float alpha)
+        public void Update(float x, float y, float height, float faceX, float faceY, bool running, float dt, float alpha, float ground = 0f)
         {
             float scaleXY = height * _popScale, scaleZ = scaleXY, tint = 0f, fade = 1f;
             if (_kind == ModelKind.Corpse)
@@ -443,7 +455,7 @@ namespace AmongUs3D
             float target = MathF.Atan2(faceX, faceY) / M.Deg2Rad;
             if (!_yawInit) { _yaw = target; _yawInit = true; }
             else _yaw += M.DeltaAngle(_yaw, target) * (1f - MathF.Exp(-dt * 14f));
-            _rootT.position = U.V3(x, y, -_popLift * height);
+            _rootT.position = U.V3(x, y, -_popLift * height - ground);
             _rootT.rotation = U.RotationZ(-_yaw);
 
             float wanted = running ? 1f : 0f;
@@ -475,6 +487,20 @@ namespace AmongUs3D
                 _outline.SetColor("_Color", U.Col(1f, 1f, 1f, a));
             }
             if (_kind == ModelKind.Corpse) UpdatePuddle(scaleZ, M.Clamp01(alpha));
+            if (_shadowT != null)
+            {
+                // toujours au ras du sol, même quand le personnage saute ou s'aplatit ; un corps couché a une ombre allongée
+                float flat = _kind == ModelKind.Corpse && _corpseAge >= 0f ? CrewShape.FallAngle(_corpseAge) / (MathF.PI * 0.5f) : 0f;
+                float safeZ = MathF.Max(0.02f, scaleZ);
+                _shadowT.localPosition = U.V3(0f, 0.30f * flat, (_popLift * height - 0.012f) / safeZ);
+                _shadowT.localScale = U.V3(0.50f + 0.04f * flat, 0.44f + 0.30f * flat, 1f); // un peu plus large que le corps
+                float sa = (_kind == ModelKind.Ghost ? 0.18f : 0.55f) * a * (1f - 0.5f * M.Clamp01(_popLift * 3f));
+                if (MathF.Abs(sa - _lastShadow) > 0.004f)
+                {
+                    _lastShadow = sa;
+                    _shadowMat.SetColor("_Color", U.Col(1f, 1f, 1f, sa));
+                }
+            }
         }
 
         /// <summary>Flaque d'acide qui s'étale sous un corps en train de se dissoudre.</summary>
@@ -513,6 +539,7 @@ namespace AmongUs3D
             U.SafeDestroy(_solid);
             U.SafeDestroy(_outline);
             U.SafeDestroy(_puddleMat);
+            U.SafeDestroy(_shadowMat);
             Root = null;
             _puddleGo = null;
             _kit = null;
@@ -612,12 +639,12 @@ namespace AmongUs3D
             _outlineR.sortingOrder = order + 1;
         }
 
-        public void Update(float x, float y, float faceX, float faceY, bool moving, float dt, float alpha)
+        public void Update(float x, float y, float faceX, float faceY, bool moving, float dt, float alpha, float ground = 0f)
         {
             float target = MathF.Atan2(faceX, faceY) / M.Deg2Rad;
             if (!_yawInit) { _yaw = target; _yawInit = true; }
             else _yaw += M.DeltaAngle(_yaw, target) * (1f - MathF.Exp(-dt * 12f));
-            _rootT.position = U.V3(x, y, 0f);
+            _rootT.position = U.V3(x, y, -ground);
             _rootT.rotation = U.RotationZ(-_yaw);
             _amp += ((moving ? 1f : 0f) - _amp) * (1f - MathF.Exp(-dt * 10f));
             if (_amp > 0.01f) _phase += dt * 14f;

@@ -10,7 +10,7 @@ namespace AmongUs3D
     /// dans une image, affichée à la place de l'aperçu 2D, et tourne doucement sur lui-même.
     /// La touche "Basculer3D" (F5) passe de la 3D à la 2D tant que le menu est ouvert ; le choix est retenu.
     /// </summary>
-    internal sealed class InventoryPreview
+    internal sealed partial class InventoryPreview
     {
         private const int RtSize = 512;
         private const float Fov = 28f, Dist = 3.2f, LookZ = 0.62f; // caméra : à 3,2 du modèle, visant 0,62 au-dessus des pieds
@@ -49,7 +49,8 @@ namespace AmongUs3D
         {
             if (!_configRead) { _configRead = true; _on = ModConfig.Inventory3D.Value; }
             MenuOpen = Game.CustomizationMenuOpen(out CosmeticsLayer cosmetics, out Transform preview);
-            if (!MenuOpen || !_on || _broken || cosmetics == null || preview == null || !preview.gameObject.activeInHierarchy)
+            if (_catActive && !MenuOpen) AbortCatalog("inventaire fermé");
+            if (!MenuOpen || !(_on || _catActive) || _broken || cosmetics == null || preview == null || !preview.gameObject.activeInHierarchy)
             {
                 Hide();
                 return;
@@ -78,7 +79,8 @@ namespace AmongUs3D
             float scaleX = info.Body.transform.lossyScale.x;
             string sig = info.ColorId + "|" + Accessories.SpriteKey(info.HatFront) + "|" + Accessories.SpriteKey(info.HatBack) + "|"
                          + Accessories.SpriteKey(info.Visor) + "|" + Accessories.SpriteKey(info.Skin) + "|" + info.Body.flipX + "|" + (scaleX < 0f);
-            if (sig != _signature && Time.unscaledTime >= _nextBake)
+            if (_catActive) CatalogStep(info, scaleX, preview); // outil de mise au point : il fait lui-même les photos
+            else if (sig != _signature && Time.unscaledTime >= _nextBake)
             {
                 _signature = sig;
                 _nextBake = Time.unscaledTime + 0.3f;
@@ -106,7 +108,7 @@ namespace AmongUs3D
             if (_capture == null) _capture = new HatCapture(_layer);
             _hat?.Destroy();
             _visor?.Destroy();
-            _hat = Accessories.Puff(_capture, info.HatBack, info.HatFront, info.Body, scaleX, float.NaN, HatShape.HalfThickness, "AU3D_InvChapeau");
+            _hat = Accessories.PuffHat(_capture, info.HatBack, info.HatFront, info.Body, scaleX, float.NaN, info.HatId, "AU3D_InvChapeau");
             _visor = Accessories.Puff(_capture, null, info.Visor, info.Body, scaleX, float.NaN, Accessories.VisorHalfThickness, "AU3D_InvVisiere");
             _skin = Accessories.PaintSkin(_capture, info.Skin, info.Body, scaleX);
 

@@ -18,6 +18,7 @@ namespace AmongUs3D
     {
         public bool Normal;                       // corps classique (pas cheval, chercheur, "long"...)
         public SpriteRenderer Body, Skin, Visor, HatFront, HatBack;
+        public string HatId;                      // identifiant du chapeau (exceptions de HatShape.KeepPuffed)
         public int ColorId;
     }
 
@@ -198,6 +199,42 @@ namespace AmongUs3D
         [MethodImpl(MethodImplOptions.NoInlining)] private static bool MinigameImpl() => Minigame.Instance != null;
         [MethodImpl(MethodImplOptions.NoInlining)] private static bool IntroImpl() => IntroCutscene.Instance != null;
 
+        /// <summary>Réunion, éjection ou cinématique d'intro : des écrans pleins, toujours montrés en 2D.</summary>
+        public static bool CutsceneOpen
+        {
+            get
+            {
+                bool any = false;
+                try { any |= MeetingImpl(); } catch (Exception e) { Report("MeetingHud.Instance", e); }
+                try { any |= ExileImpl(); } catch (Exception e) { Report("ExileController.Instance", e); }
+                try { any |= IntroImpl(); } catch (Exception e) { Report("IntroCutscene.Instance", e); }
+                return any;
+            }
+        }
+
+        /// <summary>Mini-jeu ouvert : tâche, caméras, ordinateur, menu des fantômes...</summary>
+        public static bool MinigameOpen
+        {
+            get { try { return MinigameImpl(); } catch (Exception e) { Report("Minigame.Instance", e); return false; } }
+        }
+
+        /// <summary>Fantôme qui suit un joueur (menu "hanter" ouvert) ; <paramref name="target"/> = le joueur suivi, s'il y en a un.</summary>
+        public static bool Haunting(out PlayerControl target)
+        {
+            target = null;
+            try { return HauntingImpl(ref target); } catch (Exception e) { Report("HauntMenuMinigame.HauntTarget", e); return false; }
+        }
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static bool HauntingImpl(ref PlayerControl target)
+        {
+            Minigame m = Minigame.Instance;
+            if (m == null) return false;
+            HauntMenuMinigame h = m.TryCast<HauntMenuMinigame>();
+            if (h == null) return false;
+            target = h.HauntTarget;
+            return true;
+        }
+
         // ------------------------------------------------------------------ objets du monde
 
         public static void CollectDeadBodies(List<Component> into)
@@ -267,7 +304,23 @@ namespace AmongUs3D
             try { return IsDoorImpl(c); } catch (Exception e) { Report("OpenableDoor", e); return false; }
         }
         [MethodImpl(MethodImplOptions.NoInlining)]
-        private static bool IsDoorImpl(Component c) => c.GetComponentInParent<OpenableDoor>() != null;
+        private static bool IsDoorImpl(Component c) => c.GetComponentInParent<SomeKindaDoor>() != null;
+
+        /// <summary>Collision d'une porte (la boîte qui barre le passage) et son mur "vision", pour toutes les sortes de portes.</summary>
+        public static Collider2D DoorCollider(Component door, out Collider2D shadow)
+        {
+            shadow = null;
+            try { return DoorColliderImpl(door, ref shadow); } catch (Exception e) { Report("PlainDoor.myCollider", e); return null; }
+        }
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static Collider2D DoorColliderImpl(Component door, ref Collider2D shadow)
+        {
+            PlainDoor plain = door.TryCast<PlainDoor>();
+            if (plain != null) { shadow = plain.shadowCollider; return plain.myCollider; }
+            ManualDoor manual = door.TryCast<ManualDoor>();
+            if (manual != null) { shadow = manual.shadowCollider; return manual.myCollider; }
+            return door.GetComponentInChildren<BoxCollider2D>(true);
+        }
 
         /// <summary>Masque de tout ce qui bloque les déplacements (vaisseau, objets, objets bas comme les tables).</summary>
         public static int PhysicalMask
@@ -302,7 +355,7 @@ namespace AmongUs3D
             return m != null && m.IsOpen;
         }
 
-        /// <summary>Clic gauche en vue 3D : même effet que le bouton Utiliser (ou Caresser) du jeu.</summary>
+        /// <summary>Clic gauche en vue 3D : même effet que le bouton Utiliser du jeu (jamais Caresser).</summary>
         public static void ClickUse()
         {
             if (!HudExists) return;
@@ -319,9 +372,7 @@ namespace AmongUs3D
             // 2) la bouche d'aération visée (imposteur, ingénieur)
             VentButton vent = hud.ImpostorVentButton;
             if (vent != null && vent.isActiveAndEnabled && vent.currentTarget != null) { vent.DoClick(); return; }
-            // 3) caresser son animal, sinon le bouton Utiliser tel quel
-            PetButton pet = hud.PetButton;
-            if (pet != null && pet.isActiveAndEnabled) { pet.DoClick(); return; }
+            // 3) sinon le bouton Utiliser tel quel. Le clic ne caresse jamais l'animal : la touche du jeu s'en charge.
             if (useShown) use.DoClick();
         }
 
@@ -339,7 +390,9 @@ namespace AmongUs3D
         [MethodImpl(MethodImplOptions.NoInlining)]
         private static bool UiOpenImpl(PlayerControl p)
         {
-            if (Minigame.Instance != null) return true;
+            Minigame mini = Minigame.Instance;
+            bool haunting = mini != null && mini.TryCast<HauntMenuMinigame>() != null;
+            if (mini != null && !haunting) return true;
             if (PlayerCustomizationMenu.Instance != null) return true;
             if (GameSettingMenu.Instance != null) return true;
             if (HudManager.InstanceExists)
@@ -350,8 +403,228 @@ namespace AmongUs3D
                 OptionsMenuBehaviour menu = hud.GameMenu;
                 if (menu != null && menu.IsOpen) return true;
             }
+            // Fantôme qui suit un joueur : la souris continue de diriger la caméra (Alt = curseur pour les flèches du menu).
+            if (haunting) return false;
             // Personnage libre de bouger mais bloqué quand même : une fenêtre que le mod ne connaît pas est ouverte.
             return p != null && p.moveable;
+        }
+
+        /// <summary>Vrai si une fenêtre du jeu est ouverte (mini-jeu, carte, chat, paramètres, personnalisation, réunion...).</summary>
+        public static bool AnyWindowOpen
+        {
+            get
+            {
+                if (MapOpen || FullscreenUiOpen) return true;
+                try { return WindowOpenImpl(); }
+                catch (Exception e) { Report("fenêtres du jeu (chat, réglages...)", e); return true; }
+            }
+        }
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static bool WindowOpenImpl()
+        {
+            if (PlayerCustomizationMenu.Instance != null || GameSettingMenu.Instance != null) return true;
+            if (!HudManager.InstanceExists) return false;
+            HudManager hud = HudManager.Instance;
+            ChatController chat = hud.Chat;
+            if (chat != null && chat.IsOpenOrOpening) return true;
+            OptionsMenuBehaviour menu = hud.GameMenu;
+            return menu != null && menu.IsOpen;
+        }
+
+        /// <summary>Ouvre le chat s'il est disponible (son bouton est affiché) et fermé. Renvoie vrai s'il vient de s'ouvrir.</summary>
+        public static bool TryOpenChat()
+        {
+            if (!HudExists) return false;
+            try { return OpenChatImpl(); } catch (Exception e) { Report("ChatController.Toggle", e); return false; }
+        }
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static bool OpenChatImpl()
+        {
+            ChatController chat = HudManager.Instance.Chat;
+            if (chat == null || !chat.isActiveAndEnabled || !chat.IsClosedOrClosing) return false;
+            PassiveButton button = chat.chatButton;
+            if (button == null || !button.gameObject.activeInHierarchy) return false; // chat interdit pour l'instant
+            chat.Toggle();
+            return true;
+        }
+
+        /// <summary>Retire du champ de saisie la lettre de la touche qui vient d'ouvrir le chat.</summary>
+        public static void DropChatKey(string letter)
+        {
+            if (!HudExists || string.IsNullOrEmpty(letter)) return;
+            try { DropChatKeyImpl(letter); } catch (Exception e) { Report("FreeChatInputField.Clear", e); }
+        }
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static void DropChatKeyImpl(string letter)
+        {
+            ChatController chat = HudManager.Instance.Chat;
+            FreeChatInputField field = chat != null ? chat.freeChatField : null;
+            TextBoxTMP box = field != null ? field.textArea : null;
+            if (box == null) return;
+            string text = box.text;
+            if (!string.IsNullOrEmpty(text) && string.Equals(text, letter, StringComparison.OrdinalIgnoreCase)) field.Clear();
+        }
+
+        /// <summary>Ouvre le menu des paramètres du jeu (la roue dentée). Renvoie vrai s'il vient de s'ouvrir.</summary>
+        public static bool TryOpenSettings()
+        {
+            if (!HudExists) return false;
+            try { return OpenSettingsImpl(); } catch (Exception e) { Report("OptionsMenuBehaviour.Open", e); return false; }
+        }
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static bool OpenSettingsImpl()
+        {
+            OptionsMenuBehaviour menu = HudManager.Instance.GameMenu;
+            if (menu == null || menu.IsOpen) return false;
+            menu.Open();
+            return true;
+        }
+
+        /// <summary>Outil de mise au point : place le personnage sur la carte. Refusé hors du mode Entraînement.</summary>
+        public static bool TeleportInFreeplay(float x, float y)
+        {
+            try { return TeleportImpl(x, y); } catch (Exception e) { Report("CustomNetworkTransform.SnapTo", e); return false; }
+        }
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static bool TeleportImpl(float x, float y)
+        {
+            if (!TutorialManager.InstanceExists) return false; // l'Entraînement est le seul mode qui a ce gestionnaire
+            PlayerControl p = PlayerControl.LocalPlayer;
+            if (p == null) return false;
+            p.NetTransform.SnapTo(U.V2(x, y));
+            return true;
+        }
+
+        // ------------------------------------------------------------------ conduits (vue 3D)
+
+        private static readonly List<Collider2D> _ventColliders = new List<Collider2D>();
+        private static readonly List<SpriteRenderer> _ventRenderers = new List<SpriteRenderer>();
+
+        /// <summary>
+        /// Vue 3D d'un conduit : les flèches du jeu sont un calque 2D posé sur l'écran, sans rapport avec la vue 3D.
+        /// On les masque et on les rend insensibles aux clics ; le mod dessine ses propres flèches sur le sol 3D
+        /// et déclenche celle que l'on vise.
+        /// </summary>
+        public static void SetVentArrowsClickable(bool clickable)
+        {
+            try { VentArrowsImpl(clickable); } catch (Exception e) { Report("Vent.Buttons", e); }
+        }
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static void VentArrowsImpl(bool clickable)
+        {
+            if (clickable)
+            {
+                foreach (Collider2D c in _ventColliders)
+                    if (U.Alive(c)) c.enabled = true;
+                _ventColliders.Clear();
+                foreach (SpriteRenderer r in _ventRenderers)
+                    if (U.Alive(r)) r.enabled = true;
+                _ventRenderers.Clear();
+                return;
+            }
+            Vent vent = Vent.currentVent;
+            if (vent == null) return;
+            var buttons = vent.Buttons;
+            if (buttons == null) return;
+            for (int i = 0; i < buttons.Length; i++)
+            {
+                ButtonBehavior b = buttons[i];
+                if (b == null) continue;
+                SpriteRenderer image = b.spriteRenderer;
+                if (image == null) image = b.GetComponent<SpriteRenderer>();
+                if (image != null && image.enabled)
+                {
+                    image.enabled = false;
+                    _ventRenderers.Add(image);
+                }
+                var cols = b.colliders;
+                if (cols == null) continue;
+                for (int k = 0; k < cols.Length; k++)
+                {
+                    Collider2D c = cols[k];
+                    if (c == null || !c.enabled) continue;
+                    c.enabled = false;
+                    _ventColliders.Add(c);
+                }
+            }
+        }
+
+        /// <summary>Place des flèches du conduit où se trouve le joueur, et centre de ce conduit. Faux hors d'un conduit.</summary>
+        public static bool VentArrows(List<Vector2> into, out Vector2 center)
+        {
+            into.Clear();
+            center = default;
+            try { return VentArrowsListImpl(into, ref center); } catch (Exception e) { Report("Vent.Buttons (liste)", e); return false; }
+        }
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static bool VentArrowsListImpl(List<Vector2> into, ref Vector2 center)
+        {
+            Vent vent = Vent.currentVent;
+            if (vent == null) return false;
+            Vector3 c = vent.transform.position;
+            center = U.V2(c.x, c.y);
+            var buttons = vent.Buttons;
+            if (buttons == null) return true;
+            for (int i = 0; i < buttons.Length; i++)
+            {
+                ButtonBehavior b = buttons[i];
+                if (b == null || !b.gameObject.activeInHierarchy) continue;
+                Vector3 p = b.transform.position;
+                into.Add(U.V2(p.x, p.y));
+            }
+            return true;
+        }
+
+        /// <summary>Diagnostic : position des flèches du conduit où se trouve le joueur.</summary>
+        public static string DescribeVentArrows()
+        {
+            try { return DescribeVentArrowsImpl(); } catch (Exception e) { return "flèches illisibles : " + e.Message; }
+        }
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static string DescribeVentArrowsImpl()
+        {
+            Vent vent = Vent.currentVent;
+            if (vent == null) return "aucun conduit courant";
+            var buttons = vent.Buttons;
+            if (buttons == null) return "aucune flèche";
+            var sb = new System.Text.StringBuilder("conduit " + vent.name + " :");
+            var inv = System.Globalization.CultureInfo.InvariantCulture;
+            for (int i = 0; i < buttons.Length; i++)
+            {
+                ButtonBehavior b = buttons[i];
+                if (b == null) { sb.Append(" [nul]"); continue; }
+                Vector3 p = b.transform.position;
+                sb.Append(" [").Append(p.x.ToString("0.00", inv)).Append(", ").Append(p.y.ToString("0.00", inv))
+                  .Append(b.gameObject.activeInHierarchy ? " actif]" : " inactif]");
+            }
+            return sb.ToString();
+        }
+
+        /// <summary>Déclenche la flèche du conduit la plus proche du point (x, y) de la carte, à moins de maxDist. Vrai si une flèche a été trouvée.</summary>
+        public static bool ClickVentArrow(float x, float y, float maxDist)
+        {
+            try { return ClickVentArrowImpl(x, y, maxDist); } catch (Exception e) { Report("Vent.Buttons (clic)", e); return false; }
+        }
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static bool ClickVentArrowImpl(float x, float y, float maxDist)
+        {
+            Vent vent = Vent.currentVent;
+            if (vent == null) return false;
+            var buttons = vent.Buttons;
+            if (buttons == null) return false;
+            ButtonBehavior best = null;
+            float bestD = maxDist;
+            for (int i = 0; i < buttons.Length; i++)
+            {
+                ButtonBehavior b = buttons[i];
+                if (b == null || !b.gameObject.activeInHierarchy) continue;
+                Vector3 p = b.transform.position;
+                float dx = p.x - x, dy = p.y - y, d = MathF.Sqrt(dx * dx + dy * dy);
+                if (d < bestD) { bestD = d; best = b; }
+            }
+            if (best == null) return false;
+            best.OnClick.Invoke();
+            return true;
         }
 
         /// <summary>Vrai si le jeu a sa propre caméra d'interface, dessinée après la caméra indiquée.</summary>
@@ -537,6 +810,25 @@ namespace AmongUs3D
             return data != null ? data.Pointer : IntPtr.Zero;
         }
 
+        /// <summary>Identifiant (ProductId) du chapeau porté, ou null.</summary>
+        public static string HatId(PlayerControl p)
+        {
+            try { return HatIdImpl(p != null ? p.cosmetics : null); } catch (Exception e) { Report("HatData.ProductId", e); return null; }
+        }
+
+        /// <summary>Identifiant (ProductId) du chapeau d'un calque de cosmétiques (aperçu de l'inventaire), ou null.</summary>
+        public static string HatIdOf(CosmeticsLayer c)
+        {
+            try { return HatIdImpl(c); } catch (Exception e) { Report("HatData.ProductId", e); return null; }
+        }
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static string HatIdImpl(CosmeticsLayer c)
+        {
+            HatParent hat = c != null ? c.hat : null;
+            HatData data = hat != null ? hat.Hat : null;
+            return data != null ? data.ProductId : null;
+        }
+
         /// <summary>Le jeu affiche-t-il ce joueur (faux dans une bouche d'aération, pendant certains effets...) ?</summary>
         public static bool PlayerVisible(PlayerControl p)
         {
@@ -617,7 +909,13 @@ namespace AmongUs3D
             VisorLayer visor = c.visor;
             if (visor != null) info.Visor = visor.Image;
             HatParent hat = c.hat;
-            if (hat != null) { info.HatFront = hat.FrontLayer; info.HatBack = hat.BackLayer; }
+            if (hat != null)
+            {
+                info.HatFront = hat.FrontLayer;
+                info.HatBack = hat.BackLayer;
+                HatData hd = hat.Hat;
+                if (hd != null) info.HatId = hd.ProductId;
+            }
             info.ColorId = c.ColorId;
         }
 

@@ -52,6 +52,15 @@ namespace AmongUs3D
         private PlayerControl _local;
         private Camera _main;
         private bool _inWorld, _canMove;
+        // Vues particulières : au-dessus du conduit où l'on se trouve, derrière le joueur qu'un fantôme suit.
+        private bool _ventView, _ventArrowsOff, _windowWasOpen;
+        private PlayerControl _haunted;
+        private int _chatOpenedFrame = -100;
+        private float _groundZ; // hauteur du sol sous la caméra (relief), lissée
+        // Zoom de la 3e personne (molette) : 1 = distance des réglages ; enregistré quand la molette s'arrête.
+        private const float ZoomMin = 0.4f, ZoomMax = 2.6f;
+        private float _zoom = -1f, _zoomSaveAt = -1f, _ownAlpha = 1f;
+        private readonly System.Collections.Generic.List<Vector2> _ventArrowsAt = new System.Collections.Generic.List<Vector2>();
 
         // Délégués créés une seule fois (évite des allocations à chaque image).
         private readonly Func<float, float, bool> _isOverButton;
@@ -113,9 +122,14 @@ namespace AmongUs3D
             if (_local != null && _main != null) map = Game.MapRoot(out lobby);
             _inWorld = map != null;
 
-            bool fullscreenUi = _inWorld && Game.FullscreenUiOpen;
-            bool inVent = _inWorld && ModConfig.Show2DInVent.Value && Game.InVent(_local);
-            bool render = _want3D && _inWorld && !fullscreenUi && !inVent && !_failSafe;
+            // Réunion, éjection, intro : écrans pleins en 2D. Une tâche s'affiche en 2D par-dessus la vue 3D
+            // (réglage TachesSurFond3D). Un fantôme qui suit un joueur reste en 3D.
+            bool minigame = _inWorld && Game.MinigameOpen;
+            PlayerControl haunted = null;
+            bool haunting = minigame && Game.Haunting(out haunted);
+            bool fullscreenUi = _inWorld && (Game.CutsceneOpen || (minigame && !haunting && !ModConfig.TasksOver3D.Value));
+            bool inVentNow = _inWorld && Game.InVent(_local);
+            bool render = _want3D && _inWorld && !fullscreenUi && !(inVentNow && ModConfig.Show2DInVent.Value) && !_failSafe;
 
             if (render && !EnsureRig()) render = false;
             if (render && map.Pointer != _mapPtr) BuildMap(map, lobby);
@@ -123,6 +137,18 @@ namespace AmongUs3D
             else if (!render && _active) Deactivate();
 
             _canMove = _inWorld && Game.CanMove(_local);
+            _ventView = _active && inVentNow;
+            _haunted = _active && haunting ? haunted : null;
+            if (_ventView != _ventArrowsOff)
+            {
+                // Vue 3D d'un conduit : c'est le mod qui clique les flèches (voir plus bas).
+                _ventArrowsOff = _ventView;
+                if (!_ventView) Game.SetVentArrowsClickable(true);
+            }
+            if (_ventView) Game.SetVentArrowsClickable(false); // les flèches changent à chaque conduit
+            _controls.AllowDragLook = _ventView;
+            HandleWindowKeys();
+            HandleZoom();
             if (_active)
             {
                 // La souris dirige la caméra (curseur verrouillé) sauf si une fenêtre du jeu a besoin du curseur,
@@ -130,6 +156,7 @@ namespace AmongUs3D
                 bool capture = _controls.MouseLook
                                && Game.AppFocused
                                && !InputCompat.Key(ModConfig.KeyFreeCursor.Value)
+                               && !_ventView
                                && !Game.UiWantsCursor(_local, _canMove);
                 _controls.SetCapture(capture);
                 _controls.Update(Time.deltaTime, _canMove, _isOverButton);
@@ -138,6 +165,17 @@ namespace AmongUs3D
                 if (_controls.Captured && _controls.CaptureAge > 3 && _canMove
                     && ModConfig.ClickToUse.Value && InputCompat.MouseButtonDown(0))
                     Game.ClickUse();
+
+                // Dans un conduit : un clic sur une flèche dessinée au sol emmène au conduit voisin.
+                if (_ventView && _rig != null && InputCompat.MouseButtonDown(0)
+                    && InputCompat.TryMousePosition(out float mx, out float my))
+                {
+                    bool onFloor = _rig.ScreenToFloor(mx, my, _groundZ, out float ax, out float ay);
+                    bool moved = onFloor && Game.ClickVentArrow(ax, ay, 0.8f);
+                    if (ModConfig.TestTools.Value)
+                        AmongUs3DPlugin.Logger.LogInfo(FormattableString.Invariant(
+                            $"Conduit : clic écran ({mx:0}, {my:0}) -> sol ({ax:0.00}, {ay:0.00}) touché={onFloor} flèche={moved} | {Game.DescribeVentArrows()}"));
+                }
             }
             else
             {
@@ -162,7 +200,7 @@ namespace AmongUs3D
         private void UpdatePettingLook(float px, float py, float dt)
         {
             float tx = 0f, ty = 0f;
-            bool petting = !_third && ModConfig.LookAtPetWhenPetting.Value
+            bool petting = !_third && !_ventView && _haunted == null && ModConfig.LookAtPetWhenPetting.Value
                            && Game.TryPettingTarget(_local, out tx, out ty);
             if (petting)
             {
@@ -187,6 +225,52 @@ namespace AmongUs3D
                 _petLookEnd = Time.unscaledTime + 0.8f;
             }
             if (Time.unscaledTime < _petLookEnd) _controls.Steer(float.NaN, _prePetPitch, dt, 5f);
+        }
+
+        /// <summary>
+        /// Molette : rapproche ou éloigne la caméra de la 3e personne. Tout près, on passe en 1re personne ;
+        /// depuis la 1re personne, reculer la molette repasse derrière le personnage.
+        /// </summary>
+        private void HandleZoom()
+        {
+            if (_zoom < 0f) _zoom = M.Clamp(ModConfig.ThirdPersonZoom.Value, ZoomMin, ZoomMax);
+            if (_zoomSaveAt > 0f && Time.unscaledTime >= _zoomSaveAt)
+            {
+                _zoomSaveAt = -1f;
+                if (MathF.Abs(ModConfig.ThirdPersonZoom.Value - _zoom) > 0.005f) ModConfig.ThirdPersonZoom.Value = _zoom;
+            }
+            if (!_active || !ModConfig.WheelZoom.Value || !Game.AppFocused || (_inWorld && Game.AnyWindowOpen)) return;
+            float wheel = InputCompat.MouseScroll;
+            if (MathF.Abs(wheel) < 0.01f) return;
+            wheel = M.Clamp(wheel, -3f, 3f);
+            bool forced = _ventView || _haunted != null; // vues toujours "de derrière"
+            if (!_third && !forced)
+            {
+                if (wheel < 0f) { _third = true; _zoom = ZoomMin; } // on recule : la caméra sort du personnage
+                else return;
+            }
+            else
+            {
+                float wanted = _zoom * MathF.Exp(-wheel * 0.16f);
+                if (wanted < ZoomMin * 0.97f && _third && !forced && wheel > 0f) _third = false; // tout près : 1re personne
+                _zoom = M.Clamp(wanted, ZoomMin, ZoomMax);
+            }
+            _zoomSaveAt = Time.unscaledTime + 1.5f;
+        }
+
+        /// <summary>En vue 3D : une touche ouvre le chat (T), une autre les paramètres (Échap) quand rien n'est ouvert.</summary>
+        private void HandleWindowKeys()
+        {
+            bool open = _inWorld && Game.AnyWindowOpen;
+            if (_active && !open && !_windowWasOpen)
+            {
+                KeyCode chat = ModConfig.KeyChat.Value, settings = ModConfig.KeySettings.Value;
+                if (chat != KeyCode.None && InputCompat.KeyDown(chat) && Game.TryOpenChat()) _chatOpenedFrame = Time.frameCount;
+                else if (settings != KeyCode.None && InputCompat.KeyDown(settings)) Game.TryOpenSettings();
+            }
+            // La lettre de la touche ne doit pas se retrouver tapée dans le chat qu'elle vient d'ouvrir.
+            if (Time.frameCount - _chatOpenedFrame <= 3) Game.DropChatKey(ModConfig.KeyChat.Value.ToString());
+            _windowWasOpen = open;
         }
 
         private static bool ButtonsEnabled()
@@ -216,7 +300,41 @@ namespace AmongUs3D
             if (InputCompat.KeyDown(ModConfig.KeySensitivityUp.Value)) ChangeSensitivity(1.2f);
             if (InputCompat.KeyDown(ModConfig.KeySensitivityDown.Value)) ChangeSensitivity(1f / 1.2f);
             if (InputCompat.KeyDown(ModConfig.KeyScreenshot.Value)) TakeScreenshot();
-            if (InputCompat.KeyDown(ModConfig.KeyDiagnostics.Value)) DumpDiagnostics();
+            if (InputCompat.KeyDown(ModConfig.KeyDiagnostics.Value))
+            {
+                if (ModConfig.TestTools.Value && InputCompat.Key(KeyCode.LeftControl)) RunTestCommand();
+                else DumpDiagnostics();
+            }
+        }
+
+        /// <summary>Outil de mise au point (réglage OutilsDeTest, Entraînement seulement) : exécute BepInEx/AmongUs3D-test.txt.</summary>
+        private static void RunTestCommand()
+        {
+            try
+            {
+                string file = System.IO.Path.Combine(BepInEx.Paths.BepInExRootPath, "AmongUs3D-test.txt");
+                if (!System.IO.File.Exists(file)) return;
+                string[] w = System.IO.File.ReadAllText(file).Trim().Split(' ');
+                var inv = System.Globalization.CultureInfo.InvariantCulture;
+                if (w.Length == 3 && w[0] == "tp"
+                    && float.TryParse(w[1], System.Globalization.NumberStyles.Float, inv, out float x)
+                    && float.TryParse(w[2], System.Globalization.NumberStyles.Float, inv, out float y))
+                {
+                    bool ok = Game.TeleportInFreeplay(x, y);
+                    AmongUs3DPlugin.Logger.LogInfo(ok ? $"Outil de test : personnage placé en ({w[1]}, {w[2]})." : "Outil de test : refusé hors du mode Entraînement.");
+                }
+                else if (w.Length >= 2 && w[0] == "catalogue")
+                {
+                    // "catalogue chapeaux 0 100" : inventaire ouvert, images 3D des objets du jeu
+                    int start = w.Length >= 3 && int.TryParse(w[2], out int s0) ? s0 : 0;
+                    int count = w.Length >= 4 && int.TryParse(w[3], out int n0) ? n0 : 100000;
+                    Instance?._inventory.StartCatalog(w[1], start, count);
+                }
+            }
+            catch (Exception e)
+            {
+                AmongUs3DPlugin.Logger.LogWarning("Outil de test : " + e.Message);
+            }
         }
 
         /// <summary>Rend la caméra plus ou moins vive (souris, clavier et tactile ensemble) et l'enregistre.</summary>
@@ -336,6 +454,9 @@ namespace AmongUs3D
         private void Deactivate()
         {
             _active = false;
+            _ventView = false;
+            _haunted = null;
+            if (_ventArrowsOff) { _ventArrowsOff = false; Game.SetVentArrowsClickable(true); }
             MovementOverride = false;
             _proxies.RestoreHidden();
             if (_rig != null) _rig.SetActive(false);
@@ -364,8 +485,26 @@ namespace AmongUs3D
             }
 
             float dt = Time.deltaTime;
-            Vector2 truePos = Game.TruePosition(_local);
-            SmoothedPosition(truePos, out float px, out float py);
+            // La caméra suit le joueur ; un fantôme qui "hante" quelqu'un le regarde, lui.
+            float px, py;
+            bool following = _haunted != null && U.Alive(_haunted);
+            if (following)
+            {
+                Vector2 hp = Game.TruePosition(_haunted);
+                px = hp.x; py = hp.y;
+            }
+            else
+            {
+                SmoothedPosition(Game.TruePosition(_local), out px, out py);
+            }
+            // Vue de derrière imposée : au-dessus du conduit où l'on se trouve, et derrière le joueur suivi.
+            bool third = _third || _ventView || following;
+
+            // Relief (The Fungle) : la caméra suit la hauteur du sol, en douceur (une échelle se grimpe, un saut de zone se coupe).
+            Terrain terrain = _walls.Ground;
+            float groundNow = terrain.Height(px, py);
+            if (MathF.Abs(groundNow - _groundZ) > 3f) _groundZ = groundNow;
+            else _groundZ += (groundNow - _groundZ) * (1f - MathF.Exp(-dt * 14f));
 
             // ---- vision (rayon du jeu : rôle, réglages, sabotage des lumières)
             bool simulate = ModConfig.SimulateVision.Value;
@@ -385,8 +524,8 @@ namespace AmongUs3D
             // ---- position et orientation de la caméra
             float yaw = _controls.Yaw, pitch = _controls.Pitch;
             M.YawBasis(yaw, out float fx, out float fy, out _, out _);
-            float camX = px, camY = py, camZ, lookPitch = pitch;
-            if (!_third)
+            float camX = px, camY = py, camZ, lookPitch = pitch, ownDistance = 10f;
+            if (!third)
             {
                 camZ = -M.Clamp(ModConfig.EyeHeight.Value, 0.1f, 3f);
                 // Pendant une caresse, la caméra recule un peu : l'animal est juste à nos pieds.
@@ -402,29 +541,51 @@ namespace AmongUs3D
             }
             else
             {
-                float dist = M.Clamp(ModConfig.ThirdPersonDistance.Value, 0.5f, 8f);
-                float h = M.Clamp(ModConfig.ThirdPersonHeight.Value, 0.2f, 6f);
                 // La caméra tourne autour de la tête du personnage : regarder vers le bas la fait monter
-                // (et inversement), comme la vue arrière de Minecraft.
+                // (et inversement), comme la vue arrière de Minecraft. La molette règle son éloignement.
                 const float pivot = 0.55f;
+                float zoom = _zoom > 0f ? _zoom : 1f;
+                float dist = M.Clamp(ModConfig.ThirdPersonDistance.Value, 0.5f, 8f) * zoom;
+                float h = pivot + (M.Clamp(ModConfig.ThirdPersonHeight.Value, 0.2f, 6f) - pivot) * zoom;
                 float rest = MathF.Atan2(h - pivot, dist) / M.Deg2Rad;
                 float reach = MathF.Sqrt(dist * dist + (h - pivot) * (h - pivot));
                 float er = M.Clamp(rest - pitch, -8f, 84f) * M.Deg2Rad;
                 float back = reach * MathF.Cos(er), rise = reach * MathF.Sin(er);
+                // La caméra ne traverse jamais un mur : elle se rapproche du personnage. Sous un plafond, elle
+                // ne le dépasse pas non plus ; sans plafond, elle peut monter au-dessus des murs.
+                float wallsTop = M.Clamp(ModConfig.WallHeight.Value, 0.3f, 10f);
+                bool roofed = CeilingWanted() && !terrain.Active;
                 float k = 1f;
-                if (pivot + rise < M.Clamp(ModConfig.WallHeight.Value, 0.3f, 10f) && back > 0.05f)
+                if (back > 0.05f && (roofed || pivot + rise < wallsTop))
                 {
-                    float t = _walls.ClipFraction(px, py, px - fx * back, py - fy * back);
-                    if (t < 1f) k = MathF.Max(0.12f, t - 0.2f / back);
+                    float t = _walls.ClipFractionWide(px, py, px - fx * back, py - fy * back, 0.14f);
+                    if (t < 1f) k = MathF.Max(0.03f, t - 0.22f / back);
                 }
+                if (roofed && rise > 0.01f) k = MathF.Min(k, MathF.Max(0.03f, (wallsTop - 0.16f - pivot) / rise));
                 camX = px - fx * back * k;
                 camY = py - fy * back * k;
                 camZ = -MathF.Max(0.12f, pivot + rise * k);
                 lookPitch = pitch - rest; // regarde toujours la tête du personnage
+                ownDistance = reach * k;
             }
+            // Caméra collée au personnage (coin de mur, zoom au plus près) : il s'efface pour ne pas boucher la vue.
+            float ownWanted = third ? M.Clamp01((ownDistance - 0.42f) / 0.3f) : 0f;
+            _ownAlpha += (ownWanted - _ownAlpha) * (1f - MathF.Exp(-dt * 14f));
+            float camAbove = -camZ; // hauteur de la caméra au-dessus du sol où se tient le joueur
+            camZ -= _groundZ;
             float cp = MathF.Cos(lookPitch * M.Deg2Rad), sp = MathF.Sin(lookPitch * M.Deg2Rad);
             _rig.UpdateCameras(camX, camY, camZ, fx * cp, fy * cp, -sp,
                                _background.Get(ModConfig.BackgroundColor.Value, U.Col(0.02f, 0.03f, 0.05f)));
+
+            // ---- plafond (cartes d'intérieur) : il s'efface quand la caméra monte au-dessus des murs
+            float wallTop = M.Clamp(ModConfig.WallHeight.Value, 0.3f, 10f);
+            _rig.UpdateCeiling(CeilingWanted() && !terrain.Active && camAbove < wallTop - 0.06f, px, py, wallTop, vision);
+
+            // ---- conduit : flèches 3D sur le sol vers les conduits voisins
+            if (_ventView && Game.VentArrows(_ventArrowsAt, out Vector2 ventAt))
+                _rig.UpdateVentArrows(_ventArrowsAt, ventAt.x, ventAt.y, MathF.Sin(Time.unscaledTime * 5f), terrain.Height(ventAt.x, ventAt.y));
+            else
+                _rig.UpdateVentArrows(null, 0f, 0f, 0f);
 
             // ---- flèches du jeu (sabotages...) : réorientées par rapport à la caméra 3D
             _arrows.Update(_rig, px, py, yaw);
@@ -437,13 +598,13 @@ namespace AmongUs3D
             int gameMask = _main.cullingMask;
             _proxies.Update(new ProxyFrame
             {
-                Local = _local, CamX = camX, CamY = camY, Yaw = yaw, Vision = vision, ThirdPerson = _third,
+                Local = _local, CamX = camX, CamY = camY, Yaw = yaw, Vision = vision, ThirdPerson = third, OwnAlpha = _ownAlpha,
                 SimulateVision = simulate, GameMask = gameMask, MaxDistance = half * 1.2f, DeltaTime = dt, Walls = _walls,
             });
 
             // ---- sol (vue de dessus de la carte, sans les personnages ni l'interface)
             int floorMask = gameMask & ~_floorHidden.Get(ModConfig.FloorHiddenLayers.Value) & ~_rig.UiMask();
-            _rig.UpdateFloor(px, py, vision, floorMask);
+            _rig.UpdateFloor(px, py, vision, floorMask, terrain);
             _walls.UpdateFaceUvs(_rig.FloorCenterX, _rig.FloorCenterY, _rig.FloorHalf);
             _rig.RenderFloor(_proxies);
 
@@ -456,6 +617,16 @@ namespace AmongUs3D
             {
                 _autoDiagDone = true;
                 DumpDiagnostics(); // une fois par session : aide à diagnostiquer sans clavier (Android)
+            }
+        }
+
+        private bool CeilingWanted()
+        {
+            switch (ModConfig.Ceiling.Value)
+            {
+                case ToggleMode.Always: return true;
+                case ToggleMode.Never: return false;
+                default: return _walls.Kind != MapKind.Polus && _walls.Kind != MapKind.Fungle;
             }
         }
 

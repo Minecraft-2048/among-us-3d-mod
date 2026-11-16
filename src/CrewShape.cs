@@ -31,6 +31,13 @@ namespace AmongUs3D
             return Add(x, y, z, nx, ny, nz, CrewZone.Body);
         }
 
+        /// <summary>Sommet coloré avec sa propre opacité (ombres au sol).</summary>
+        public int AddColored(float x, float y, float z, float nx, float ny, float nz, byte r, byte g, byte b, byte a)
+        {
+            Rgba.Add(((uint)r << 24) | ((uint)g << 16) | ((uint)b << 8) | a);
+            return Add(x, y, z, nx, ny, nz, CrewZone.Body);
+        }
+
         public int Add(float x, float y, float z, float nx, float ny, float nz, byte zone)
         {
             float l = MathF.Sqrt(nx * nx + ny * ny + nz * nz);
@@ -212,6 +219,32 @@ namespace AmongUs3D
                 m.Add(r * MathF.Cos(a), r * MathF.Sin(a), 0f, 0f, 0f, 1f, CrewZone.Body);
             }
             for (int i = 0; i < n; i++) AddTriangle(m, c, c + 1 + i, c + 2 + i);
+            return m;
+        }
+
+        /// <summary>Ombre au sol d'un personnage : disque noir de rayon 1, plein au centre, qui s'estompe vers le bord.</summary>
+        public static ShapeMesh ShadowDisc()
+        {
+            var m = new ShapeMesh();
+            const int n = 24;
+            int c = m.AddColored(0f, 0f, 0f, 0f, 0f, 1f, 0, 0, 0, 255);
+            for (int ring = 0; ring < 2; ring++)
+            {
+                float r = ring == 0 ? 0.55f : 1f;
+                byte a = ring == 0 ? (byte)215 : (byte)0;
+                for (int i = 0; i <= n; i++)
+                {
+                    float ang = 2f * MathF.PI * (i % n) / n;
+                    m.AddColored(r * MathF.Cos(ang), r * MathF.Sin(ang), 0f, 0f, 0f, 1f, 0, 0, 0, a);
+                }
+            }
+            int r0 = c + 1, r1 = r0 + n + 1;
+            for (int i = 0; i < n; i++)
+            {
+                AddTriangle(m, c, r0 + i, r0 + i + 1);
+                AddTriangle(m, r0 + i, r1 + i, r1 + i + 1);
+                AddTriangle(m, r0 + i, r1 + i + 1, r0 + i + 1);
+            }
             return m;
         }
 

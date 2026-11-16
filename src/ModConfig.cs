@@ -57,6 +57,8 @@ namespace AmongUs3D
         public static ConfigEntry<float> EyeHeight;
         public static ConfigEntry<float> ThirdPersonDistance;
         public static ConfigEntry<float> ThirdPersonHeight;
+        public static ConfigEntry<float> ThirdPersonZoom;
+        public static ConfigEntry<bool> WheelZoom;
 
         // Monde 3D
         public static ConfigEntry<float> WallHeight;
@@ -64,6 +66,15 @@ namespace AmongUs3D
         public static ConfigEntry<bool> RaiseWallArt;
         public static ConfigEntry<bool> Decor3D;
         public static ConfigEntry<bool> CompleteWalls;
+        public static ConfigEntry<bool> TasksOver3D;
+        public static ConfigEntry<ToggleMode> Ceiling;
+        public static ConfigEntry<int> AntiAliasing;
+        public static ConfigEntry<bool> ContactShadows;
+        public static ConfigEntry<bool> TrueHeights;
+        public static ConfigEntry<bool> Relief;
+        public static ConfigEntry<bool> TestTools;
+        public static ConfigEntry<KeyCode> KeyChat;
+        public static ConfigEntry<KeyCode> KeySettings;
         public static ConfigEntry<bool> Animations3D;
         public static ConfigEntry<ToggleMode> OuterWalls;
         public static ConfigEntry<bool> Characters3D;
@@ -103,7 +114,8 @@ namespace AmongUs3D
                          W = "5. Monde 3D", V = "6. Vision", MM = "7. Mini-carte";
 
             Enable3DAtStart = cfg.Bind(G, "Activer3DAuDemarrage", true, "Active la vue 3D dès que l'on entre dans le lobby ou une partie.");
-            Show2DInVent = cfg.Bind(G, "Vue2DDansLesBouches", true, "Repasse temporairement en 2D quand on est dans une bouche d'aération (pour cliquer sur les flèches).");
+            Show2DInVent = cfg.Bind(G, "Vue2DDansLesBouches", false, "false = dans une bouche d'aération la vue reste en 3D, caméra au-dessus du conduit comme à la 3e personne : on clique les flèches dessinées sur le sol, clic droit maintenu = tourner. true = repasse en 2D (ancien comportement).");
+            TasksOver3D = cfg.Bind(G, "TachesSurFond3D", true, "Pendant une tâche ou un mini-jeu (caméras, ordinateur...), la fenêtre de la tâche reste en 2D mais l'arrière-plan reste la vue 3D. false = toute la vue repasse en 2D (ancien comportement).");
             OnScreenButtons = cfg.Bind(G, "BoutonsAEcran", ToggleMode.Auto, "Boutons tactiles [3D] [1P/3P] [MAP] en haut de l'écran. Auto = seulement sur mobile.");
             ButtonScale = cfg.Bind(G, "TailleBoutons", 1f, "Taille des boutons à l'écran (1 = normal).");
 
@@ -116,6 +128,8 @@ namespace AmongUs3D
             KeySensitivityUp = cfg.Bind(K, "SensibilitePlus", KeyCode.F11, "Augmente la sensibilité de la caméra (souris et clavier).");
             KeyScreenshot = cfg.Bind(K, "CaptureEcran", KeyCode.F12, "Enregistre une capture d'écran du jeu (le chemin du fichier est écrit dans le journal).");
             KeyDiagnostics = cfg.Bind(K, "Diagnostic", KeyCode.F9, "Écrit des informations techniques dans le journal BepInEx (pour signaler un problème).");
+            KeyChat = cfg.Bind(K, "OuvrirLeChat", KeyCode.T, "En vue 3D, ouvre le chat quand il est disponible (lobby, réunions, fantômes). None = désactivé.");
+            KeySettings = cfg.Bind(K, "OuvrirLesParametres", KeyCode.Escape, "En vue 3D, ouvre les paramètres du jeu quand aucune fenêtre n'est ouverte. None = désactivé.");
             KeyTurnLeft = cfg.Bind(K, "TournerGauche", KeyCode.None, "Touche supplémentaire pour tourner à gauche (optionnel).");
             KeyTurnRight = cfg.Bind(K, "TournerDroite", KeyCode.None, "Touche supplémentaire pour tourner à droite (optionnel).");
 
@@ -124,7 +138,7 @@ namespace AmongUs3D
             MouseLookAtStart = cfg.Bind(C, "SourisCommeMinecraft", true,
                 "PC : dès l'entrée en 3D, la souris dirige la caméra (curseur caché) et les touches de déplacement deviennent avancer / reculer / pas de côté, comme dans Minecraft. " +
                 "Le curseur revient tout seul dans les menus, réunions, tâches, bouches d'aération et quand la carte est ouverte.");
-            ClickToUse = cfg.Bind(C, "ClicGaucheUtiliser", true, "Quand la souris dirige la caméra, le clic gauche fait la même chose que le bouton Utiliser du jeu.");
+            ClickToUse = cfg.Bind(C, "ClicGaucheUtiliser", true, "Quand la souris dirige la caméra, le clic gauche fait la même chose que le bouton Utiliser du jeu (tâches, bouches d'aération). Il ne caresse jamais l'animal.");
             Scheme = cfg.Bind(C, "SchemaDeControle", ControlScheme.Auto,
                 "Tank : haut/bas = avancer/reculer, gauche/droite = tourner la caméra. " +
                 "Strafe : déplacements relatifs à la caméra (gauche/droite = pas de côté), on tourne avec la souris ou en glissant le doigt. " +
@@ -142,6 +156,8 @@ namespace AmongUs3D
             EyeHeight = cfg.Bind(CAM, "HauteurDesYeux", 0.55f, "Hauteur de la caméra en première personne (un personnage mesure environ 0.8).");
             ThirdPersonDistance = cfg.Bind(CAM, "DistanceTroisiemePersonne", 2.2f, "Distance derrière le personnage en troisième personne.");
             ThirdPersonHeight = cfg.Bind(CAM, "HauteurTroisiemePersonne", 1.2f, "Hauteur de la caméra en troisième personne.");
+            ThirdPersonZoom = cfg.Bind(CAM, "ZoomTroisiemePersonne", 1f, "Éloignement de la caméra de la 3e personne (1 = normal). La molette de la souris le change en jeu et il est retenu ici.");
+            WheelZoom = cfg.Bind(CAM, "ZoomALaMolette", true, "La molette rapproche ou éloigne la caméra de la 3e personne. Tout près, on passe en 1re personne ; depuis la 1re personne, reculer la molette repasse derrière le personnage.");
 
             WallHeight = cfg.Bind(W, "HauteurDesMurs", 2.0f, "Hauteur des murs extrudés.");
             ObstacleHeight = cfg.Bind(W, "HauteurDesObstacles", 0.3f, "Hauteur des obstacles bas (tables, caisses...). 0 = ne pas les afficher.");
@@ -150,6 +166,11 @@ namespace AmongUs3D
             Decor3D = cfg.Bind(W, "Decor3D", true, "Les meubles sont de vrais objets modelés en 3D : tables rondes à pied central entourées de bancs, bouton d'urgence en dôme, consoles inclinées, caisses à cadre, lits, chaises, et des formes aux arêtes arrondies pour le reste (dessus et faces avant peints avec le dessin du jeu). false = ancien rendu : blocs extrudés sur les collisions.");
             CompleteWalls = cfg.Bind(W, "MursComplets", true, "Complète les murs restés bas : trous dans un mur droit, côtés de salle dont le mur est en retrait. Les objets bas adossés à un mur (réacteur, pupitre...) deviennent des volumes. false = rendu de la version 1.2.");
             Animations3D = cfg.Bind(W, "Animations3D", true, "Les animations des personnages sont jouées en 3D : le corps d'un joueur tué tombe à plat sur le sol (et se dissout s'il a été tué par la Vipère), les joueurs sautent dans les bouches d'aération et en ressortent, grimpent aux échelles et apparaissent en 3D. false = cadavre debout et images plates pendant ces animations.");
+            Ceiling = cfg.Bind(W, "Plafond", ToggleMode.Auto, "Plafond à dalles et luminaires au-dessus des murs. Auto = sur les cartes d'intérieur (pas Polus ni The Fungle). Il s'efface quand la caméra de la 3e personne monte au-dessus des murs.");
+            AntiAliasing = cfg.Bind(W, "AntiCrenelage", 4, "Lissage des bords de la vue 3D : 0 (aucun), 2, 4 ou 8. À baisser si le jeu rame.");
+            Relief = cfg.Bind(W, "Relief", true, "The Fungle : le terrain a de vrais niveaux. Les hauteurs que l'on atteint par les échelles sont au-dessus de la jungle, la falaise monte, et la caméra s'élève quand on grimpe. false = carte plate.");
+            TrueHeights = cfg.Bind(W, "VraieHauteurDesMeubles", true, "Les meubles prennent la hauteur que montre leur dessin dans le jeu (distributeurs, armoires, machines, plantes) au lieu d'être tous bas ; leur dessin se plaque alors sans déformation. false = meubles bas de la version 1.3.");
+            ContactShadows = cfg.Bind(W, "OmbresAuSol", true, "Petite ombre ronde sous les personnages 3D, pour qu'ils aient l'air posés sur le sol.");
             OuterWalls = cfg.Bind(W, "MursExterieurs", ToggleMode.Auto, "Transforme aussi en murs les limites de la carte derrière lesquelles il n'y a rien. Auto = seulement sur les cartes d'intérieur (pas Polus ni The Fungle).");
             SabotageArrows3D = cfg.Bind(W, "Fleches3D", true, "Les flèches du jeu (sabotages...) suivent la caméra 3D : posées au-dessus de l'endroit visé quand il est devant soi, sinon en boussole autour du centre de l'écran (en haut = devant, en bas = derrière). false = flèches de la vue de dessus.");
             Hats3D = cfg.Bind(W, "Chapeaux3D", true, "Les chapeaux deviennent des objets en volume posés sur la tête des personnages 3D (fabriqués à partir de leur dessin). false = images plates tournées vers la caméra.");
@@ -184,11 +205,12 @@ namespace AmongUs3D
             MinimapSize = cfg.Bind(MM, "TailleMiniCarte", 0.28f, "Hauteur de la mini-carte en fraction de la hauteur de l'écran.");
             MinimapPosition = cfg.Bind(MM, "PositionMiniCarte", ScreenCorner.Auto, "Auto = en bas à gauche sur PC, en haut au centre sur mobile.");
 
+            TestTools = cfg.Bind(G, "OutilsDeTest", false, "Réservé à la mise au point du mod, et seulement en Entraînement (jamais en partie) : Ctrl + la touche de diagnostic exécute la ligne écrite dans BepInEx/AmongUs3D-test.txt : « tp x y » place le personnage, « catalogue chapeaux 0 100 » (inventaire ouvert) enregistre des images 3D des objets du jeu.");
             ConfigVersion = cfg.Bind(G, "VersionDesReglages", 0, "Ne pas modifier : sert à adopter les nouvelles valeurs par défaut quand le mod est mis à jour.");
             Migrate();
         }
 
-        private const int CurrentConfigVersion = 2;
+        private const int CurrentConfigVersion = 3;
 
         /// <summary>
         /// Un fichier de réglages existant garde ses anciennes valeurs : quand une valeur par défaut change dans une
@@ -206,6 +228,11 @@ namespace AmongUs3D
                 Adopt(TouchLookSpeed, 180f, 260f);
                 Adopt(MaxPitch, 35f, 60f);
                 if (DumpGeometry.Value) DumpGeometry.Value = false; // n'a servi qu'à mettre au point la 1.1
+            }
+            if (from < 3)
+            {
+                // 1.4 : dans une bouche d'aération, la vue reste en 3D au-dessus du conduit.
+                if (Show2DInVent.Value) Show2DInVent.Value = false;
             }
             ConfigVersion.Value = CurrentConfigVersion;
         }
