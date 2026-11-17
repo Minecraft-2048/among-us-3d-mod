@@ -35,7 +35,7 @@ Les autres joueurs n'ont **pas** besoin du mod et ne voient aucune différence.
 | **Portes** | Une porte fermée est **debout** dans son encadrement, avec son dessin (portes de sabotage, portes de décontamination de MIRA HQ et de Polus…). Elle s'efface quand elle s'ouvre. |
 | **Plafond** | Sur les cartes d'intérieur, un plafond à dalles et à luminaires ferme les salles. Il s'efface quand la caméra de la 3e personne monte au-dessus des murs. |
 | **Meubles** | De **vrais objets modelés en 3D**, comme dans Blender : tables rondes à pied central entourées de bancs, bouton d'urgence en dôme rouge, consoles inclinées, caisses à cadre, lits (même collés à une cloison), chaises de bureau. Les meubles non reconnus gardent leur forme, avec des arêtes arrondies et une plinthe, y compris les objets adossés à un mur (cœur du réacteur, pupitre de la sécurité…). Les **meubles hauts** (distributeurs de MIRA HQ, armoires, machines) ont leur vraie hauteur, et leur dessin se plaque sur leur façade sans déformation. Le dessus et les faces avant restent peints avec le dessin du jeu. |
-| **Sol** | La carte 2D d'origine (bouches d'aération, surbrillances, décor) est plaquée au sol, mise à jour en direct. |
+| **Sol** | La carte 2D d'origine (bouches d'aération, surbrillances, décor) est plaquée au sol, mise à jour en direct, **sans les meubles ni les portes** déjà dressés en 3D : on ne voit plus la table dessinée à plat sous la table 3D. Quand le dessin d'un meuble fait partie de l'image de la pièce (tables de la cafétéria et lits de l'infirmerie de The Skeld), une ombre douce le recouvre sous le meuble 3D. Les murs sont peints de la même façon (un pupitre posé devant un mur n'y est plus recopié), et le dessin plaqué sur le dessus des meubles est calé sur la hauteur que montre leur dessin. |
 | **Relief** | Sur **The Fungle**, le terrain a de vrais niveaux : les hauteurs que l'on atteint par les échelles sont au-dessus de la jungle, la falaise monte (en pente raide), et la caméra s'élève quand on grimpe. |
 | **Personnages** | Vrais modèles 3D aux couleurs du joueur : corps, visière, sac à dos, jambes qui marchent, contour noir. Les cadavres aussi (demi-corps et os). Le nom reste affiché au-dessus. Une petite ombre ronde les pose sur le sol. |
 | **Animations** | Elles sont jouées **en 3D**. Quand un joueur est tué, son corps **tombe à plat** sur le sol, dans la direction où il regardait, avec un petit rebond. Tué par la **Vipère**, le corps s'affaisse, verdit et **se dissout** dans une flaque d'acide, au rythme du jeu. Les joueurs **sautent dans les bouches d'aération** et en ressortent, grimpent aux échelles dos à toi, et apparaissent en grandissant. |
@@ -153,6 +153,8 @@ Ouvre-le avec un éditeur de texte (jeu fermé). Les plus utiles :
 | `MursComplets` | `true` | Murs restés bas complétés à pleine hauteur (cartes d'intérieur), raccords entre murs, objets adossés aux murs en volume ; `false` = rendu de la version 1.2. |
 | `Plafond` | `Auto` | Plafond sur les cartes d'intérieur ; `Never` = pas de plafond. |
 | `VraieHauteurDesMeubles` | `true` | Meubles hauts à leur vraie hauteur ; `false` = meubles bas de la version 1.3. |
+| `SolSansLesMeubles` | `true` | Le sol et les murs ne recopient pas à plat les meubles et les portes 3D (second rendu de la carte vue de dessus, ombre sous les meubles dessinés dans le sol) ; `false` = un seul rendu, si le jeu rame. |
+| `DessinCaleSurLeMeuble` | `true` | Dessin du dessus des meubles bas calé sur la hauteur lue sur leur dessin ; `false` = calage de la version 1.4. |
 | `Relief` | `true` | Niveaux du terrain sur The Fungle ; `false` = carte plate. |
 | `AntiCrenelage` | `4` | Lissage des bords de la 3D (0, 2, 4 ou 8) ; à baisser si le jeu rame. |
 | `OmbresAuSol` | `true` | Ombre ronde sous les personnages. |
@@ -178,7 +180,7 @@ Le journal est **`BepInEx/LogOutput.log`**. **F9** y écrit un diagnostic comple
 | Les personnages 3D ne te plaisent pas | `Personnages3D = false`. |
 | Un chapeau 3D a une forme bizarre | `Chapeaux3D = false` remet les chapeaux plats. |
 | Un meuble 3D a une forme bizarre | `Decor3D = false` remet les blocs simples. |
-| Le jeu rame | `AntiCrenelage = 0`, `ResolutionDuSol = 1024`, `DistanceDeVueDuSol = 10`, `MiniCarteAuDemarrage = false`. |
+| Le jeu rame | `AntiCrenelage = 0`, `ResolutionDuSol = 1024`, `DistanceDeVueDuSol = 10`, `MiniCarteAuDemarrage = false`, puis `SolSansLesMeubles = false`. |
 | The Fungle a l'air bizarre | `Relief = false` remet la carte à plat. |
 | « Trop d'erreurs : vue 3D désactivée » | Le mod s'est mis en sécurité : envoie `LogOutput.log`. |
 

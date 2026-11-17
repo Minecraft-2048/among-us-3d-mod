@@ -323,6 +323,46 @@ namespace AmongUs3D
                     bool ok = Game.TeleportInFreeplay(x, y);
                     AmongUs3DPlugin.Logger.LogInfo(ok ? $"Outil de test : personnage placé en ({w[1]}, {w[2]})." : "Outil de test : refusé hors du mode Entraînement.");
                 }
+                else if (w.Length == 3 && w[0] == "dessins"
+                         && float.TryParse(w[1], System.Globalization.NumberStyles.Float, inv, out float qx)
+                         && float.TryParse(w[2], System.Globalization.NumberStyles.Float, inv, out float qy))
+                {
+                    // "dessins x y" : tous les dessins de la carte qui couvrent ce point (diagnostic des textures)
+                    MonoBehaviour map = Game.MapRoot(out _);
+                    if (map == null) { AmongUs3DPlugin.Logger.LogInfo("Outil de test : pas de carte."); return; }
+                    foreach (SpriteRenderer r in map.GetComponentsInChildren<SpriteRenderer>(true))
+                    {
+                        if (r == null) continue;
+                        Bounds b = r.bounds;
+                        Vector3 mn = b.min, mx = b.max;
+                        if (qx < mn.x || qx > mx.x || qy < mn.y || qy > mx.y) continue;
+                        string path = r.gameObject.name;
+                        Transform up = r.transform.parent;
+                        for (int depth = 0; up != null && depth < 4; depth++, up = up.parent) path = up.gameObject.name + "/" + path;
+                        Collider2D col = r.GetComponent<Collider2D>();
+                        AmongUs3DPlugin.Logger.LogInfo(FormattableString.Invariant(
+                            $"DESSIN|{path}|{(r.sprite != null ? r.sprite.name : "-")}|{mn.x:0.00},{mn.y:0.00} -> {mx.x:0.00},{mx.y:0.00}|ordre={r.sortingOrder} z={r.transform.position.z:0.000}|actif={r.enabled && r.gameObject.activeInHierarchy}|collision={(col != null ? col.GetIl2CppType().Name : "-")}|sol={(Instance != null && Instance._walls.HidesOnGround(r) ? "retiré" : "gardé")}"));
+                    }
+                }
+                else if (w.Length == 2 && w[0] == "sol" && w[1] == "png")
+                {
+                    // les deux images de la carte vue de dessus (entière / sol seul), pour comparer
+                    string dir = System.IO.Path.Combine(BepInEx.Paths.BepInExRootPath, "AmongUs3D-captures");
+                    Instance?._rig?.DumpFloorTextures(dir);
+                }
+                else if (w.Length == 2 && w[0] == "calage")
+                {
+                    // "calage on" / "calage off" : dessin des meubles calé sur leur dessin ou sur les anciens blocs (carte refaite)
+                    ModConfig.ArtFromSprite.Value = w[1] == "on";
+                    if (Instance != null) Instance._mapPtr = IntPtr.Zero;
+                    AmongUs3DPlugin.Logger.LogInfo("Outil de test : dessin calé sur le meuble = " + ModConfig.ArtFromSprite.Value + " (carte refaite)");
+                }
+                else if (w.Length == 2 && w[0] == "sol")
+                {
+                    // "sol on" / "sol off" : sol sans / avec les dessins des meubles (comparaison, sans toucher au fichier de réglages)
+                    ModConfig.GroundWithoutProps.Value = w[1] == "on";
+                    AmongUs3DPlugin.Logger.LogInfo("Outil de test : sol sans les meubles = " + ModConfig.GroundWithoutProps.Value);
+                }
                 else if (w.Length >= 2 && w[0] == "catalogue")
                 {
                     // "catalogue chapeaux 0 100" : inventaire ouvert, images 3D des objets du jeu
@@ -424,7 +464,7 @@ namespace AmongUs3D
             _isLobby = lobby;
             try
             {
-                _walls.Build(map, lobby, _rig.Root.transform, _layer3D, _rig.FloorMaterial);
+                _walls.Build(map, lobby, _rig.Root.transform, _layer3D, _rig.FloorMaterial, _rig.GroundMaterial);
             }
             catch (Exception e)
             {
@@ -606,7 +646,7 @@ namespace AmongUs3D
             int floorMask = gameMask & ~_floorHidden.Get(ModConfig.FloorHiddenLayers.Value) & ~_rig.UiMask();
             _rig.UpdateFloor(px, py, vision, floorMask, terrain);
             _walls.UpdateFaceUvs(_rig.FloorCenterX, _rig.FloorCenterY, _rig.FloorHalf);
-            _rig.RenderFloor(_proxies);
+            _rig.RenderFloor(_proxies, _walls);
 
             // ---- mini-carte
             Vector3 sprite = _local.transform.position;

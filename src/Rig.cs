@@ -21,7 +21,9 @@ namespace AmongUs3D
         public int LayerMini { get; private set; }
 
         private Camera _cam3D, _floorCam, _uiCam, _miniCam;
-        private RenderTexture _floorRT;
+        private RenderTexture _floorRT;  // la carte entière vue de dessus : elle peint aussi les murs et les meubles 3D
+        private RenderTexture _groundRT; // le sol seul : sans les dessins déjà dressés en 3D (meubles, portes)
+        private Material _groundMat;
         private int _rtSize;
         private float _floorHalf;
         private GameObject _floorGo;
@@ -114,6 +116,13 @@ namespace AmongUs3D
             _floorRT.wrapMode = TextureWrapMode.Clamp;
             _floorRT.anisoLevel = mobile ? 2 : 8;
             _floorRT.Create();
+            _groundRT = new RenderTexture(_rtSize, _rtSize, 16) { name = "AU3D_Ground" };
+            _groundRT.useMipMap = true;
+            _groundRT.autoGenerateMips = true;
+            _groundRT.filterMode = FilterMode.Trilinear;
+            _groundRT.wrapMode = TextureWrapMode.Clamp;
+            _groundRT.anisoLevel = mobile ? 2 : 8;
+            _groundRT.Create();
 
             _floorCam = NewCamera("AU3D_FloorCamera", Root.transform);
             _floorCam.enabled = false; // rendu manuel (voir RenderFloor)
@@ -123,13 +132,15 @@ namespace AmongUs3D
 
             _floorMat = new Material(SpriteShader) { name = "AU3D_FloorMat" };
             _floorMat.mainTexture = _floorRT;
+            _groundMat = new Material(SpriteShader) { name = "AU3D_GroundMat" };
+            _groundMat.mainTexture = _groundRT;
             _floorGo = new GameObject("AU3D_Floor");
             _floorGo.layer = Layer3D;
             _floorGo.transform.SetParent(Root.transform, false);
             _floorMesh = new Mesh { name = "AU3D_FloorMesh" };
             _floorGo.AddComponent<MeshFilter>().sharedMesh = _floorMesh;
             var floorRenderer = _floorGo.AddComponent<MeshRenderer>();
-            floorRenderer.sharedMaterial = _floorMat;
+            floorRenderer.sharedMaterial = _groundMat;
             floorRenderer.sortingOrder = -30000;
             BuildFloorMesh(M.Clamp(ModConfig.FloorViewDistance.Value, 6f, 40f), mobile ? 48 : 72);
 
@@ -246,8 +257,14 @@ namespace AmongUs3D
                 try { _floorRT.Release(); } catch { /* ignoré */ }
                 U.SafeDestroy(_floorRT);
             }
+            if (U.Alive(_groundRT))
+            {
+                try { _groundRT.Release(); } catch { /* ignoré */ }
+                U.SafeDestroy(_groundRT);
+            }
             U.SafeDestroy(_floorMesh);
             U.SafeDestroy(_floorMat);
+            U.SafeDestroy(_groundMat);
             U.SafeDestroy(_arrowMesh);
             U.SafeDestroy(_arrowMat);
             U.SafeDestroy(_ventArrowMesh);
@@ -653,15 +670,59 @@ namespace AmongUs3D
             halfW = halfH * Main.aspect;
         }
 
+        /// <summary>Outil de test : enregistre la carte entière et le sol seul (PNG), tels que rendus à cette image.</summary>
+        public void DumpFloorTextures(string dir)
+        {
+            try
+            {
+                System.IO.Directory.CreateDirectory(dir);
+                Save(_floorRT, System.IO.Path.Combine(dir, "sol-carte-entiere.png"));
+                Save(_groundRT, System.IO.Path.Combine(dir, "sol-seul.png"));
+                AmongUs3DPlugin.Logger.LogInfo("Outil de test : textures du sol enregistrées dans " + dir);
+            }
+            catch (Exception e) { AmongUs3DPlugin.Logger.LogWarning("Outil de test : textures du sol non enregistrées : " + e.Message); }
+
+            static void Save(RenderTexture rt, string path)
+            {
+                if (!U.Alive(rt)) return;
+                RenderTexture prev = RenderTexture.active;
+                var tex = new Texture2D(rt.width, rt.height, TextureFormat.RGBA32, false);
+                try
+                {
+                    RenderTexture.active = rt;
+                    tex.ReadPixels(new Rect(0f, 0f, rt.width, rt.height), 0, 0);
+                    tex.Apply(false);
+                    var png = ImageConversion.EncodeToPNG(tex);
+                    var bytes = new byte[png.Length];
+                    for (int i = 0; i < bytes.Length; i++) bytes[i] = png[i];
+                    System.IO.File.WriteAllBytes(path, bytes);
+                }
+                finally
+                {
+                    RenderTexture.active = prev;
+                    UnityEngine.Object.Destroy(tex);
+                }
+            }
+        }
+
         public float FloorHalf => _floorHalf;
         public float FloorCenterX { get; private set; }
         public float FloorCenterY { get; private set; }
         /// <summary>Matériau du sol (texture de la carte vue de dessus), réutilisé par les faces de murs redressées.</summary>
         public Material FloorMaterial => _floorMat;
+        /// <summary>Matériau du sol seul (sans les dessins des meubles et des portes 3D), réutilisé par les faces de murs.</summary>
+        public Material GroundMaterial => _groundMat;
 
-        /// <summary>Rend la texture du sol en masquant un instant les personnages d'origine.</summary>
-        public void RenderFloor(ProxySystem proxies)
+        /// <summary>
+        /// Rend la carte vue de dessus en masquant un instant les personnages d'origine : d'abord en entier (texture
+        /// des murs et des meubles 3D), puis, pour le sol, sans les dessins déjà dressés en 3D (on verrait sinon la table
+        /// dessinée à plat sous la table 3D).
+        /// </summary>
+        public void RenderFloor(ProxySystem proxies, WallSystem walls)
         {
+            bool twoPass = !_autoFloor && ModConfig.GroundWithoutProps.Value && walls != null && walls.GroundHideCount > 0;
+            Texture wanted = twoPass ? _groundRT : _floorRT;
+            if (_groundMat.mainTexture != wanted) _groundMat.mainTexture = wanted;
             if (_autoFloor) return; // mode de secours : la caméra du sol se rend toute seule
             proxies.HideSourcesForFloor();
             // L'obscurité 2D du jeu ne doit pas être "peinte" sur le sol (la 3D a sa propre vision).
@@ -671,13 +732,30 @@ namespace AmongUs3D
             catch { shadowWasOn = false; }
             try
             {
+                _floorCam.targetTexture = _floorRT;
                 _floorCam.Render();
+                if (twoPass)
+                {
+                    walls.HideArtForGround();
+                    try
+                    {
+                        _floorCam.targetTexture = _groundRT;
+                        _floorCam.Render();
+                    }
+                    finally
+                    {
+                        walls.RestoreArtAfterGround();
+                        _floorCam.targetTexture = _floorRT;
+                    }
+                }
             }
             catch (Exception e)
             {
-                // Rendu manuel impossible : rendu automatique, personnages exclus par calque.
+                // Rendu manuel impossible : rendu automatique, personnages exclus par calque (sol et murs : même texture).
                 Safe.Report("Camera.Render", e);
                 _autoFloor = true;
+                _floorCam.targetTexture = _floorRT;
+                _groundMat.mainTexture = _floorRT;
                 _floorCam.enabled = true;
             }
             finally

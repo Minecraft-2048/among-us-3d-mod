@@ -71,6 +71,7 @@ namespace AmongUs3D
         public static ConfigEntry<int> AntiAliasing;
         public static ConfigEntry<bool> ContactShadows;
         public static ConfigEntry<bool> TrueHeights;
+        public static ConfigEntry<bool> ArtFromSprite;
         public static ConfigEntry<bool> Relief;
         public static ConfigEntry<bool> TestTools;
         public static ConfigEntry<KeyCode> KeyChat;
@@ -83,6 +84,7 @@ namespace AmongUs3D
         public static ConfigEntry<bool> DumpGeometry;
         public static ConfigEntry<float> FloorViewDistance;
         public static ConfigEntry<int> FloorTextureSize;
+        public static ConfigEntry<bool> GroundWithoutProps;
         public static ConfigEntry<string> WallLayers;
         public static ConfigEntry<string> ObstacleLayers;
         public static ConfigEntry<string> FloorHiddenLayers;
@@ -169,6 +171,7 @@ namespace AmongUs3D
             Ceiling = cfg.Bind(W, "Plafond", ToggleMode.Auto, "Plafond à dalles et luminaires au-dessus des murs. Auto = sur les cartes d'intérieur (pas Polus ni The Fungle). Il s'efface quand la caméra de la 3e personne monte au-dessus des murs.");
             AntiAliasing = cfg.Bind(W, "AntiCrenelage", 4, "Lissage des bords de la vue 3D : 0 (aucun), 2, 4 ou 8. À baisser si le jeu rame.");
             Relief = cfg.Bind(W, "Relief", true, "The Fungle : le terrain a de vrais niveaux. Les hauteurs que l'on atteint par les échelles sont au-dessus de la jungle, la falaise monte, et la caméra s'élève quand on grimpe. false = carte plate.");
+            ArtFromSprite = cfg.Bind(W, "DessinCaleSurLeMeuble", true, "Le dessin plaqué sur le dessus et l'avant des meubles bas est calé sur la hauteur que montre leur dessin dans le jeu (false : calé sur la hauteur des anciens blocs, ce qui le décale : bout de sol au fond du plateau, bout de plateau sur l'avant).");
             TrueHeights = cfg.Bind(W, "VraieHauteurDesMeubles", true, "Les meubles prennent la hauteur que montre leur dessin dans le jeu (distributeurs, armoires, machines, plantes) au lieu d'être tous bas ; leur dessin se plaque alors sans déformation. false = meubles bas de la version 1.3.");
             ContactShadows = cfg.Bind(W, "OmbresAuSol", true, "Petite ombre ronde sous les personnages 3D, pour qu'ils aient l'air posés sur le sol.");
             OuterWalls = cfg.Bind(W, "MursExterieurs", ToggleMode.Auto, "Transforme aussi en murs les limites de la carte derrière lesquelles il n'y a rien. Auto = seulement sur les cartes d'intérieur (pas Polus ni The Fungle).");
@@ -182,6 +185,7 @@ namespace AmongUs3D
             DumpGeometry = cfg.Bind(W, "ExporterLaGeometrie", false, "Diagnostic : écrit dans le journal toutes les collisions de la carte (lignes GEO|...) à chaque construction des murs.");
             FloorViewDistance = cfg.Bind(W, "DistanceDeVueDuSol", 14f, "Demi-taille de la zone de sol affichée autour du joueur.");
             FloorTextureSize = cfg.Bind(W, "ResolutionDuSol", 0, "Résolution de la texture du sol (0 = auto : 2048 sur PC, 1024 sur mobile).");
+            GroundWithoutProps = cfg.Bind(W, "SolSansLesMeubles", true, "Le sol 3D ne montre pas à plat le dessin des meubles et des portes déjà dressés en 3D (sinon on voit la table dessinée sous la table). Demande un second rendu de la carte vue de dessus ; false = un seul rendu, comme avant.");
             WallLayers = cfg.Bind(W, "CalquesMurs", "auto", "Calques dont les collisions deviennent des murs pleine hauteur. auto = ce qui bloque la vision dans le jeu (Constants.ShadowMask), sinon des noms séparés par des virgules (ex. Shadow).");
             ObstacleLayers = cfg.Bind(W, "CalquesObstacles", "auto", "Calques des collisions physiques (murs où l'on bute, murets, meubles). auto = tout ce qui bloque les déplacements (Constants.ShipAndAllObjectsMask), sinon des noms (ex. Ship,ShortObjects).");
             FloorHiddenLayers = cfg.Bind(W, "CalquesCachesDuSol", "UI,Shadow,DrawShadows", "Calques à ne pas dessiner dans la texture du sol.");

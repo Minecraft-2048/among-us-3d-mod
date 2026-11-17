@@ -113,18 +113,27 @@ namespace AmongUs3D
             // Le dessin du jeu montre un point à la hauteur z en (x, y + z). À la vraie hauteur il se plaque tel quel ;
             // sinon il est calé sur la hauteur des anciens blocs.
             bool trueHeight = kind == PropKind.Cabinet || (kind == PropKind.Generic && h.ArtHeight >= 0.2f);
-            float artK = trueHeight ? 1f : (top > 0.01f ? M.Clamp(obstacleH / top, 0.3f, 1.5f) : 1f);
+            float artK;
+            if (trueHeight || top <= 0.01f) artK = 1f;
+            // Le dessus du meuble est dessiné décalé de sa hauteur "2D", mesurée sur son dessin : on le prend là.
+            else if (ModConfig.ArtFromSprite.Value && h.ArtHeight >= 0.05f) artK = M.Clamp(h.ArtHeight / top, 0.15f, 1.5f);
+            else artK = M.Clamp(obstacleH / top, 0.3f, 1.5f);
 
             Load(_b, solid, true, artK);
             if (Commit(_b, col, U.Col(1f, 1f, 1f), layer, false, "AU3D_Meuble3D", false) == null) return false;
             Load(_bt, art, false, artK);
-            Commit(_bt, col, U.Col(1f, 1f, 1f), layer, false, "AU3D_Meuble3DDessin", true);
+            Commit(_bt, col, U.Col(1f, 1f, 1f), layer, false, "AU3D_Meuble3DDessin", true); // rien pour un meuble tout en couleurs (lit, chaise)
+            // Son dessin à plat ne doit plus se voir au sol : caché s'il est à part, sinon (dessin intégré à l'image du sol)
+            // recouvert par une ombre douce.
+            bool ownArt = CollectPropArt(col, xs, ys, !generic);
+            RecordArtZone(col, xs, ys, top * artK, !ownArt && !generic,
+                          kind == PropKind.RoundTable || kind == PropKind.Drum || kind == PropKind.Button);
 
             _propCounts.TryGetValue(kind, out int count);
             _propCounts[kind] = count + 1;
             if (ModConfig.DumpGeometry.Value)
                 AmongUs3DPlugin.Logger.LogInfo(FormattableString.Invariant(
-                    $"PROP|{kind}|{name}|{f.Cx:0.00},{f.Cy:0.00}|{2f * f.HalfLen:0.00}x{2f * f.HalfWid:0.00}|rond={f.Roundness:0.00} plein={f.Fill:0.00}|urgence={h.Emergency} console={h.TaskConsole}|haut={top:0.00} dessin={h.ArtHeight:0.00}"));
+                    $"PROP|{kind}|{name}|{f.Cx:0.00},{f.Cy:0.00}|{2f * f.HalfLen:0.00}x{2f * f.HalfWid:0.00}|rond={f.Roundness:0.00} plein={f.Fill:0.00}|urgence={h.Emergency} console={h.TaskConsole}|haut={top:0.00} dessin={h.ArtHeight:0.00} calage={artK:0.00}|sol={_lastArtNote}"));
             return true;
         }
 
@@ -162,6 +171,175 @@ namespace AmongUs3D
             catch { return 0f; }
         }
 
+        /// <summary>
+        /// Dessins du jeu de ce meuble (sur l'objet de la collision, son parent, et leurs enfants posés dessus) : le sol
+        /// 3D ne doit plus les montrer à plat, le meuble 3D les porte déjà. Jamais le dessin d'une pièce entière.
+        /// </summary>
+        /// <param name="children">aussi les dessins enfants (posés sur le meuble) ; faux pour un objet adossé à un mur,
+        /// dont la collision appartient au mur : ses enfants seraient tous les objets de la pièce</param>
+        /// <returns>vrai si le dessin propre du meuble a été trouvé (il ne sera plus dessiné au sol)</returns>
+        private bool CollectPropArt(Collider2D col, List<float> xs, List<float> ys, bool children)
+        {
+            bool found = false;
+            try
+            {
+                float minX = float.MaxValue, minY = float.MaxValue, maxX = float.MinValue, maxY = float.MinValue;
+                for (int i = 0; i < xs.Count; i++)
+                {
+                    minX = MathF.Min(minX, xs[i]); maxX = MathF.Max(maxX, xs[i]);
+                    minY = MathF.Min(minY, ys[i]); maxY = MathF.Max(maxY, ys[i]);
+                }
+                Transform owner = col.transform;
+                SpriteRenderer own = col.GetComponent<SpriteRenderer>();
+                if (own == null && owner.parent != null)
+                {
+                    SpriteRenderer up = owner.parent.GetComponent<SpriteRenderer>();
+                    if (up != null) { own = up; owner = owner.parent; }
+                }
+                _lastArtNote = own == null ? "aucun" : own.gameObject.name + ":" + (own.sprite != null ? own.sprite.name : "-");
+                if (own != null && IsPropArt(own, minX, minY, maxX, maxY))
+                {
+                    HideOnGround(own);
+                    Vector3 sz = own.bounds.size;
+                    found = own.enabled && own.gameObject.activeInHierarchy && sz.x > 0.05f && sz.y > 0.05f;
+                    _lastArtNote += FormattableString.Invariant($":{sz.x:0.00}x{sz.y:0.00}:{(own.enabled ? "on" : "off")}:{(found ? "pris" : "vide")}");
+                }
+                else if (own != null) _lastArtNote += ":refusé";
+                if (!children) return found;
+                foreach (SpriteRenderer r in owner.GetComponentsInChildren<SpriteRenderer>(true))
+                    if (r != own && IsPropArt(r, minX, minY, maxX, maxY)) HideOnGround(r);
+            }
+            catch (Exception e) { AmongUs3DPlugin.Logger.LogDebug("Dessin d'un meuble : " + e.Message); }
+            return found;
+        }
+
+        // ------------------------------------------------------------------ ombres sous les meubles
+
+        /// <summary>
+        /// Zone du dessin d'un meuble vu de dessus : son emprise, prolongée vers le haut de sa hauteur dessinée.
+        /// Quand ce dessin fait partie de l'image du sol (tables et lits de The Skeld), on ne peut pas le cacher :
+        /// une ombre douce le recouvre sous le meuble 3D (sous une vraie table aussi, il fait sombre).
+        /// </summary>
+        private struct ArtZone
+        {
+            public float X0, Y0, X1, Y1;  // dessin, avec une marge
+            public float Cx, Cy, Rx, Ry;  // emprise au sol (ellipse) : ombre plus dense dessous
+            public Collider2D Col;
+            public bool Patch, Round;
+        }
+
+        private readonly List<ArtZone> _artZones = new List<ArtZone>();
+        private string _lastArtNote = "";   // diagnostic : dessin propre trouvé pour le dernier meuble
+        private Material _shadowMaterial;
+        private const float PatchMargin = 0.12f, PatchFeather = 0.3f, PatchCell = 0.22f;
+
+        private void RecordArtZone(Collider2D col, List<float> xs, List<float> ys, float artH, bool patch, bool round)
+        {
+            float minX = float.MaxValue, minY = float.MaxValue, maxX = float.MinValue, maxY = float.MinValue;
+            for (int i = 0; i < xs.Count; i++)
+            {
+                minX = MathF.Min(minX, xs[i]); maxX = MathF.Max(maxX, xs[i]);
+                minY = MathF.Min(minY, ys[i]); maxY = MathF.Max(maxY, ys[i]);
+            }
+            _artZones.Add(new ArtZone
+            {
+                X0 = minX - PatchMargin, Y0 = minY - PatchMargin, X1 = maxX + PatchMargin, Y1 = maxY + MathF.Max(0f, artH) + PatchMargin,
+                Cx = (minX + maxX) * 0.5f, Cy = (minY + maxY) * 0.5f, Rx = (maxX - minX) * 0.5f + 0.1f, Ry = (maxY - minY) * 0.5f + 0.1f,
+                Col = col, Patch = patch, Round = round,
+            });
+        }
+
+        private int BuildGroundPatches(int layer)
+        {
+            if (!ModConfig.GroundWithoutProps.Value) return 0;
+            int made = 0;
+            foreach (ArtZone z in _artZones)
+            {
+                if (!z.Patch || !BuildShadowPatch(z, layer)) continue;
+                made++;
+                if (ModConfig.DumpGeometry.Value)
+                    AmongUs3DPlugin.Logger.LogInfo(FormattableString.Invariant(
+                        $"OMBRE|{z.Cx:0.00},{z.Cy:0.00}|{z.X1 - z.X0:0.00}x{z.Y1 - z.Y0:0.00}|{(z.Round ? "ronde" : "droite")}"));
+            }
+            return made;
+        }
+
+        /// <summary>
+        /// Opacité de l'ombre en (x, y) : pleine sur le dessin du meuble (ovale pour un meuble rond, rectangle sinon),
+        /// fondue jusqu'à 0 sur un bord de <see cref="PatchFeather"/>.
+        /// </summary>
+        private static float ShadowCover(in ArtZone z, float x, float y)
+        {
+            if (z.Round)
+            {
+                float cx = (z.X0 + z.X1) * 0.5f, cy = (z.Y0 + z.Y1) * 0.5f, rx = (z.X1 - z.X0) * 0.5f, ry = (z.Y1 - z.Y0) * 0.5f;
+                float ex = (x - cx) / rx, ey = (y - cy) / ry, d = MathF.Sqrt(ex * ex + ey * ey);
+                return d <= 1f ? 1f : M.Clamp01(1f - (d - 1f) * MathF.Min(rx, ry) / PatchFeather);
+            }
+            float out_ = MathF.Max(MathF.Max(z.X0 - x, x - z.X1), MathF.Max(z.Y0 - y, y - z.Y1));
+            return out_ <= 0f ? 1f : M.Clamp01(1f - out_ / PatchFeather);
+        }
+
+        /// <summary>Ombre douce et sombre posée juste au-dessus du sol, assez opaque pour masquer le dessin à plat du meuble.</summary>
+        private bool BuildShadowPatch(in ArtZone z, int layer)
+        {
+            if (_shadowMaterial == null)
+            {
+                Shader sh = Shader.Find("Sprites/Default");
+                if (sh == null) return false;
+                _shadowMaterial = new Material(sh) { name = "AU3D_OmbreMeuble" };
+            }
+            float x0 = z.X0 - PatchFeather, x1 = z.X1 + PatchFeather, y0 = z.Y0 - PatchFeather, y1 = z.Y1 + PatchFeather;
+            int nx = Math.Max(2, (int)MathF.Ceiling((x1 - x0) / PatchCell)), ny = Math.Max(2, (int)MathF.Ceiling((y1 - y0) / PatchCell));
+            _b.Clear();
+            var alpha = new List<byte>();
+            for (int j = 0; j <= ny; j++)
+            for (int i = 0; i <= nx; i++)
+            {
+                float x = x0 + (x1 - x0) * i / nx, y = y0 + (y1 - y0) * j / ny;
+                float ex = (x - z.Cx) / z.Rx, ey = (y - z.Cy) / z.Ry;
+                float under = M.Clamp01(1.3f - MathF.Sqrt(ex * ex + ey * ey)); // plus noir sous le meuble
+                _b.Vertex(x, y, -0.004f, 1f, x, y);
+                alpha.Add(U.ToByte(ShadowCover(z, x, y) * (0.80f + 0.14f * under)));
+            }
+            for (int j = 0; j < ny; j++)
+            for (int i = 0; i < nx; i++)
+            {
+                int k = j * (nx + 1) + i;
+                _b.Tris.Add(k); _b.Tris.Add(k + nx + 1); _b.Tris.Add(k + 1);
+                _b.Tris.Add(k + 1); _b.Tris.Add(k + nx + 1); _b.Tris.Add(k + nx + 2);
+            }
+            WallMesh wm = Commit(_b, z.Col, U.Col(0.07f, 0.075f, 0.09f), layer, false, "AU3D_OmbreSousMeuble", false);
+            if (wm == null) return false;
+            wm.A = alpha.ToArray();
+            try
+            {
+                MeshRenderer r = wm.Go.GetComponent<MeshRenderer>();
+                r.sharedMaterial = _shadowMaterial;
+                r.sortingOrder = -29900;
+            }
+            catch { /* ordre par défaut */ }
+            return true;
+        }
+
+        /// <summary>Ce dessin est-il celui d'un meuble de cette emprise (pas une pièce, pas un objet voisin) ?</summary>
+        private static bool IsPropArt(SpriteRenderer r, float minX, float minY, float maxX, float maxY)
+        {
+            if (r == null || r.sprite == null) return false;
+            // L'ombre dessinée sous un meuble reste au sol (elle pose le meuble 3D), une bouche d'aération aussi.
+            string n = r.gameObject.name ?? "";
+            if (n.IndexOf("shadow", StringComparison.OrdinalIgnoreCase) >= 0 || n.IndexOf("ombre", StringComparison.OrdinalIgnoreCase) >= 0) return false;
+            if (r.GetComponentInParent<Vent>() != null) return false;
+            Bounds b = r.bounds;
+            Vector3 bmin = b.min, bmax = b.max;
+            float w = maxX - minX, d = maxY - minY;
+            if (bmax.x - bmin.x > 1.8f * w + 0.6f) return false;         // bien plus large : une pièce, un décor
+            if (bmax.y - bmin.y > d + 2.6f) return false;                  // bien plus haut qu'un meuble dessiné en perspective
+            if (bmax.x < minX - 0.1f || bmin.x > maxX + 0.1f) return false; // pas au-dessus de l'emprise
+            if (bmin.y < minY - 0.8f || bmin.y > maxY + 0.1f) return false; // le bas du dessin est sur l'emprise
+            return true;
+        }
+
         private static void Load(Builder b, ShapeMesh m, bool colors, float artK)
         {
             b.Clear();
@@ -192,6 +370,7 @@ namespace AmongUs3D
                 if (door == null) continue;
                 Collider2D box = Game.DoorCollider(door, out Collider2D shadow);
                 if (box == null) continue;
+                CollectDoorArt(door);
                 polys.Clear();
                 Extract(box, polys);
                 if (polys.Count == 0) continue;
@@ -235,6 +414,22 @@ namespace AmongUs3D
                 count++;
             }
             return count;
+        }
+
+        /// <summary>Dessins d'une porte (battant, ouvert ou fermé) : montrés par le panneau 3D, pas à plat sur le sol.</summary>
+        private void CollectDoorArt(SomeKindaDoor door)
+        {
+            try
+            {
+                foreach (SpriteRenderer r in door.GetComponentsInChildren<SpriteRenderer>(true))
+                {
+                    if (r == null || r.sprite == null) continue;
+                    Vector3 size = r.bounds.size;
+                    if (size.x > 4f || size.y > 4f) continue; // pas un morceau de décor entier
+                    HideOnGround(r);
+                }
+            }
+            catch (Exception e) { AmongUs3DPlugin.Logger.LogDebug("Dessin d'une porte : " + e.Message); }
         }
 
         /// <summary>Relief de la carte, déduit des collisions et des échelles (voir <see cref="Terrain"/>). Plat hors de The Fungle.</summary>

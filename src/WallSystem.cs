@@ -43,6 +43,7 @@ namespace AmongUs3D
             public float[] ArtX, ArtY;
             public Il2CppStructArray<Vector2> Uvs;
             public bool UvFresh;
+            public byte[] A; // opacité de chaque sommet (pièces de sol fondues sur les bords), sinon opaque
         }
 
         private struct Poly
@@ -105,6 +106,10 @@ namespace AmongUs3D
 
         private readonly List<WallMesh> _meshes = new List<WallMesh>();
         private readonly List<WallMesh> _textured = new List<WallMesh>();
+        // Dessins du jeu déjà montrés en 3D (meubles, portes) : retirés du rendu du sol seul.
+        private readonly List<SpriteRenderer> _groundHide = new List<SpriteRenderer>();
+        private readonly HashSet<IntPtr> _groundHideKeys = new HashSet<IntPtr>();
+        private readonly List<SpriteRenderer> _groundHidden = new List<SpriteRenderer>();
         private readonly List<WallSeg> _segments = new List<WallSeg>();   // murs "vision" (ligne de vue)
         private readonly List<WallSeg> _solidSegs = new List<WallSeg>();  // murs physiques (caméra 3e personne)
         private readonly List<(float X, float Y, int Owner)> _visionEnds = new List<(float, float, int)>(); // bouts des murs "vision" ouverts
@@ -113,7 +118,7 @@ namespace AmongUs3D
         /// <summary>Relief de la carte (plat sauf sur The Fungle).</summary>
         public Terrain Ground => _terrain;
         private GameObject _root;
-        private Material _material, _floorMaterial;
+        private Material _material, _floorMaterial, _groundMaterial;
         private bool _includeTriggers;
         private int _roundRobin;
         private float _lastCx = float.NaN, _lastCy, _lastRadius, _lastAmbient;
@@ -127,7 +132,10 @@ namespace AmongUs3D
 
         // ------------------------------------------------------------------ construction
 
-        public void Build(MonoBehaviour mapRoot, bool isLobby, Transform parent, int layer, Material floorMaterial)
+        /// <param name="floorMaterial">carte entière vue de dessus : dessin des meubles et des portes 3D</param>
+        /// <param name="groundMaterial">même vue sans les meubles ni les portes : dessin des murs (un pupitre posé devant un
+        /// mur ne doit pas y être peint une seconde fois, à plat)</param>
+        public void Build(MonoBehaviour mapRoot, bool isLobby, Transform parent, int layer, Material floorMaterial, Material groundMaterial)
         {
             Clear();
             _root = new GameObject("AU3D_Walls");
@@ -135,6 +143,7 @@ namespace AmongUs3D
             _root.transform.SetParent(parent, false);
             _material = CreateMaterial();
             _floorMaterial = floorMaterial;
+            _groundMaterial = groundMaterial ?? floorMaterial;
 
             int wallMask = ResolveMask(ModConfig.WallLayers.Value, Game.ShadowMask, "Shadow");
             int obstacleMask = ModConfig.ObstacleHeight.Value > 0.01f || ModConfig.RaiseWallArt.Value
@@ -214,8 +223,10 @@ namespace AmongUs3D
                     detail = BuildLowObstacles(colliders, obstacleMask, obstacleH, obstacleColor, layer);
             }
 
+            int patches = BuildGroundPatches(layer);
             _lightDirty = true;
-            Summary = $"{walls} murs ({doors} portes, {doorPanels} dressées), {detail}, {_segments.Count} segments, carte={kind}, " +
+            Summary = $"{walls} murs ({doors} portes, {doorPanels} dressées), {detail}, {_groundHide.Count} dessins retirés du sol, " +
+                      $"{patches} ombres sous les meubles dessinés dans le sol, {_segments.Count} segments, carte={kind}, " +
                       $"triggers inclus={_includeTriggers} ({wallTriggers}/{wallCount}), calques murs={U.MaskToNames(wallMask)}, physiques={U.MaskToNames(obstacleMask)}";
             AmongUs3DPlugin.Logger.LogInfo("Carte 3D construite : " + Summary);
         }
@@ -799,7 +810,7 @@ namespace AmongUs3D
                         faceCount++;
                     }
                 }
-                Commit(_bt, s.Col, U.Col(1f, 1f, 1f), layer, false, "AU3D_Face", true);
+                Commit(_bt, s.Col, U.Col(1f, 1f, 1f), layer, false, "AU3D_Face", true, true);
             }
 
             int joins = ModConfig.CompleteWalls.Value && solids.Count > 0 ? BuildJoins(runSegs, solids[0].Col, wallH, wallColor, layer) : 0;
@@ -1119,7 +1130,7 @@ namespace AmongUs3D
 
         // ------------------------------------------------------------------ maillages
 
-        private WallMesh Commit(Builder b, Collider2D c, Color color, int layer, bool door, string name, bool textured)
+        private WallMesh Commit(Builder b, Collider2D c, Color color, int layer, bool door, string name, bool textured, bool wallArt = false)
         {
             int n = b.X.Count;
             if (n == 0 || b.Tris.Count == 0) return null;
@@ -1176,7 +1187,7 @@ namespace AmongUs3D
             mesh.MarkDynamic();
             go.AddComponent<MeshFilter>().sharedMesh = mesh;
             MeshRenderer renderer = go.AddComponent<MeshRenderer>();
-            renderer.sharedMaterial = textured ? _floorMaterial : _material;
+            renderer.sharedMaterial = textured ? (wallArt ? _groundMaterial : _floorMaterial) : _material;
             if (textured) renderer.sortingOrder = -29000; // après le sol (-30000), avant les personnages
 
             // "Dynamique" = peut apparaître/disparaître (portes) : vérifié à chaque image, les autres de temps en temps.
@@ -1197,8 +1208,56 @@ namespace AmongUs3D
             return wm;
         }
 
+        /// <summary>Nombre de dessins du jeu retirés du rendu du sol (meubles et portes en 3D).</summary>
+        public int GroundHideCount => _groundHide.Count;
+
+        /// <summary>Diagnostic : ce dessin est-il retiré du rendu du sol ?</summary>
+        public bool HidesOnGround(SpriteRenderer r)
+        {
+            try { return r != null && _groundHideKeys.Contains(r.Pointer); } catch { return false; }
+        }
+
+        private void HideOnGround(SpriteRenderer r)
+        {
+            try { if (r != null && _groundHideKeys.Add(r.Pointer)) _groundHide.Add(r); }
+            catch { /* objet détruit */ }
+        }
+
+        /// <summary>Masque un instant les dessins des meubles et des portes 3D (rendu du sol seul).</summary>
+        public void HideArtForGround()
+        {
+            _groundHidden.Clear();
+            foreach (SpriteRenderer r in _groundHide)
+            {
+                try
+                {
+                    if (r != null && r.enabled)
+                    {
+                        r.enabled = false;
+                        _groundHidden.Add(r);
+                    }
+                }
+                catch { /* objet détruit */ }
+            }
+        }
+
+        public void RestoreArtAfterGround()
+        {
+            foreach (SpriteRenderer r in _groundHidden)
+            {
+                try { r.enabled = true; } catch { /* objet détruit */ }
+            }
+            _groundHidden.Clear();
+        }
+
         public void Clear()
         {
+            _artZones.Clear();
+            U.SafeDestroy(_shadowMaterial);
+            _shadowMaterial = null;
+            RestoreArtAfterGround();
+            _groundHide.Clear();
+            _groundHideKeys.Clear();
             foreach (WallMesh m in _meshes) U.SafeDestroy(m.Mesh);
             _meshes.Clear();
             _textured.Clear();
@@ -1211,6 +1270,7 @@ namespace AmongUs3D
             _root = null;
             _material = null;
             _floorMaterial = null;
+            _groundMaterial = null;
             _lastCx = float.NaN;
             _uvCx = float.NaN;
             Summary = "(aucune carte)";
@@ -1268,7 +1328,7 @@ namespace AmongUs3D
                 if (boxDist > v.FadeEnd)
                 {
                     if (m.Dark) continue;
-                    for (int i = 0; i < m.VertexCount; i++) m.Colors[i] = black;
+                    for (int i = 0; i < m.VertexCount; i++) m.Colors[i] = m.A != null ? U.C32(0, 0, 0, m.A[i]) : black;
                     m.Mesh.colors32 = m.Colors;
                     m.Dark = true;
                     continue;
@@ -1279,8 +1339,9 @@ namespace AmongUs3D
                 {
                     float dx = m.X[i] - v.Cx, dy = m.Y[i] - v.Cy;
                     float b = M.VisionBrightness(MathF.Sqrt(dx * dx + dy * dy), v.Radius, v.Full, v.Ambient, v.FadeStart, v.FadeEnd) * m.Shade[i];
-                    m.Colors[i] = own ? U.C32(U.ToByte(m.CR[i] * b), U.ToByte(m.CG[i] * b), U.ToByte(m.CB[i] * b))
-                                      : U.C32(U.ToByte(m.R * b), U.ToByte(m.G * b), U.ToByte(m.B * b));
+                    byte a = m.A != null ? m.A[i] : (byte)255;
+                    m.Colors[i] = own ? U.C32(U.ToByte(m.CR[i] * b), U.ToByte(m.CG[i] * b), U.ToByte(m.CB[i] * b), a)
+                                      : U.C32(U.ToByte(m.R * b), U.ToByte(m.G * b), U.ToByte(m.B * b), a);
                 }
                 m.Mesh.colors32 = m.Colors;
             }

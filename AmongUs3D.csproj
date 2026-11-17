@@ -7,7 +7,7 @@
     <Nullable>disable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
     <DebugType>embedded</DebugType>
-    <Version>1.4.0</Version>
+    <Version>1.4.1</Version>
     <Description>Vue 3D à la première personne pour Among Us (Windows + Android/Starlight)</Description>
     <Authors>AmongUs3D</Authors>
     <!-- Pas de code unsafe. Un seul appel natif, propre à Windows (KeyHints : disposition du clavier, via user32),
